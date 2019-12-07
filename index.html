@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Nearby Stations</title>
+</head>
+<body>
+    <button onclick="updateUserPosition()">search</button>
+    <script>
+    let stations;
+
+    const xhr = new XMLHttpRequest();
+    xhr.onreadystatechange = function() {
+        switch (xhr.readyState) {
+            case 4: {
+                if(xhr.status == 200 || xhr.status == 304) {
+                    stations = JSON.parse(xhr.responseText)
+                    console.log(stations);
+                } else {
+                    console.log( 'Failed. HttpStatus: ' + xhr.statusText );
+                }
+                break;
+            }
+        }
+    };
+       
+    let userPosition = {
+        latitude: null,
+        longitude: null
+    }
+
+    const updateUserPosition = () => {
+        if (!navigator.geolocation){
+            window.alert("Geolocation is not supported.");
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            position => {
+                userPosition.latitude = position.coords.latitude;
+                userPosition.longitude = position.coords.longitude;
+                
+                console.log(userPosition.latitude, userPosition.longitude);
+            },
+            error => {
+                window.alert("Unable to retrieve your location.");
+            }
+        );
+    }
+
+    const doRequest = (method, url) => {
+        xhr.open(method, url, false);
+        xhr.setRequestHeader("Content-Type", "application/json");
+        xhr.send();
+        xhr.abort();
+    }
+ 
+    doRequest("GET", "https://dashimaki929.github.io/json/stations.json")
+   </script>
+</body>
+</html>
