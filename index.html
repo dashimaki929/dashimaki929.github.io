@@ -57,6 +57,7 @@
 
                 console.log(userPosition.latitude, userPosition.longitude);
                 console.log(nearbyStations);
+                document.body.innerHTML = "<textarea rows=\"64\" cols=\"64\">" + JSON.stringify(nearbyStations, null, "\t") + "/textarea";
             },
             error => {
                 window.alert("Unable to retrieve your location.");
