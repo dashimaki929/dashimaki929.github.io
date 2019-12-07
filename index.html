@@ -9,8 +9,8 @@
 <body>
     <button onclick="updateUserPosition()">search</button>
     <script>
-    let nearbyStations;
-    let stations;
+    let nearbyStations = {};
+    let stations = {};
 
     const xhr = new XMLHttpRequest();
     xhr.onreadystatechange = function() {
