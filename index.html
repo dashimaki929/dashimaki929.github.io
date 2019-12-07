@@ -39,11 +39,10 @@
             if (aDiff > bDiff) return 1;
         	return 0;
         });
-        nearbyStations = {
-            1: stationsArray[0],
-            2: stationsArray[1],
-            3: stationsArray[2]
-        };
+
+        for (let i = 0; i < 10; i++) {
+            nearbyStations[i] = stationsArray[i];
+        }
     }
     const updateUserPosition = () => {
         if (!navigator.geolocation){
@@ -72,7 +71,6 @@
         xhr.abort();
     }
     doRequest("GET", "https://dashimaki929.github.io/json/stations.json");
-
    </script>
 </body>
 </html>
