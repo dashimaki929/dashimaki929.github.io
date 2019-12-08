@@ -15,6 +15,6 @@
         "sizes": "512x512",
         "type": "image/png"
       }],
-    "start_url": "/index.html",
+    "start_url": "/pwa/nearby-stations/index.html",
     "display": "standalone"
   }
