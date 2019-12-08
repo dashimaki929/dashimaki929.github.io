@@ -13,10 +13,10 @@
     <link rel="manifest" href="./manifest.json">
     <title>Nearby Stations</title>
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/css/materialize.min.css">
     <link rel="stylesheet" href="./css/style.css">
     <script type="text/javascript" src="https://code.jquery.com/jquery-latest.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/0.100.2/js/materialize.min.js"></script>
 </head>
 <body>
     <nav>
@@ -35,12 +35,25 @@
         </div>
     </main>
 
-    <div class="fixed-action-btn" style="right:32px;bottom:48px;">
-        <a class="btn-floating btn-large teal">
-            <i id="gpsIcon" class="large material-icons waves-effect waves-light teal" onclick="updateUserPosition()">gps_fixed</i>
-        </a>
+    <!-- Element Showed -->
+    <div class="fixed-action-btn" style="bottom: 45px; right: 24px;">
+        <a id="gps_fixed" class="btn btn-floating btn-large teal" onclick="updateUserPosition()"><i class="material-icons">gps_fixed</i></a>
     </div>
 
+    <!-- Start Tap Target Structure -->
+    <div class="tap-target teal lighten-1" data-activates="gps_fixed">
+        <div class="tap-target-content white-text">
+            <h5>位置情報取得</h5>
+            <p>位置情報を提供することで付近の駅を検索します。
+                位置情報が送信/保存されることはありません。</p>
+        </div>
+    </div>
+
+    <script>
+    $(document).ready(function(){
+        $('.tap-target').tapTarget('open');
+    });
+    </script>
     <script src="./js/functions.js"></script>
     <script src="./application.js"></script>
 </body>
