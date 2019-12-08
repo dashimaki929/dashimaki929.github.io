@@ -29,12 +29,13 @@ function toggleRunning() {
         icon.textContent = "gps_off";
     } else {
         isRunning = true;
+        updateUserPosition();
         interval = setInterval(() => {
             updateUserPosition();
-            if (icon.textContent === "gps_not_fixed") {
-                icon.textContent = "gps_fixed";
-            } else {
+            if (icon.textContent === "gps_fixed") {
                 icon.textContent = "gps_not_fixed";
+            } else {
+                icon.textContent = "gps_fixed";
             }
         }, 1000);
     }
