@@ -85,7 +85,7 @@ function displayNearbyStations() {
         cardHTML += '</div>';
         cardHTML += '</div>';
 
-        disp.innerHTML += cardText;
+        disp.innerHTML += cardHTML;
     }
 }
 function getOptimizedDistance(distance) {
