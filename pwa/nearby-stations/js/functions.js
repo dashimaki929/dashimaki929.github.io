@@ -3,9 +3,6 @@ const showStationsLength = 10;
 let nearbyStations = {};
 let stations = {};
 
-let isRunning = false;
-let interval = null;
-
 const xhr = new XMLHttpRequest();
 xhr.onreadystatechange = function() {
     switch (xhr.readyState) {
@@ -21,29 +18,6 @@ xhr.onreadystatechange = function() {
 };
  
 
-function toggleRunning() {
-    const icon = document.getElementById("gpsIcon");
-    if (isRunning) {
-        isRunning = false;
-        clearInterval(interval);
-        icon.textContent = "gps_off";
-    } else {
-        isRunning = true;
-        updateUserPosition();
-        icon.textContent = "gps_fixed";
-
-        interval = setInterval(() => {
-            updateUserPosition();
-            if (icon.textContent === "gps_fixed") {
-                icon.textContent = "gps_not_fixed";
-            } else {
-                icon.textContent = "gps_fixed";
-            }
-        }, 1000);
-    }
-}
-
-
 let userPosition = {
     latitude: null,
     longitude: null
@@ -51,6 +25,7 @@ let userPosition = {
 function updateUserPosition() {
     if (!navigator.geolocation){
         window.alert("Geolocation is not supported.");
+        toggleRunning();
     }
 
     navigator.geolocation.getCurrentPosition(
@@ -65,6 +40,7 @@ function updateUserPosition() {
         },
         error => {
             window.alert("Unable to retrieve your location.");
+            toggleRunning();
         }
     );
 }
