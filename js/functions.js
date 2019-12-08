@@ -19,13 +19,20 @@ let userPosition = {
     latitude: null,
     longitude: null
 }
+const distance = function(lat1, lon1, lat2, lon2) {
+    lat1 *= Math.PI / 180;
+    lon1 *= Math.PI / 180;
+    lat2 *= Math.PI / 180;
+    lon2 *= Math.PI / 180;
+    return 6371 * Math.acos(Math.cos(lat1) * Math.cos(lat2) * Math.cos(lon2 - lon1) + Math.sin(lat1) * Math.sin(lat2));
+}
 const deriveNearbyStations = () => {
     const stationsArray = Object.values(stations);
     stationsArray.sort((a, b) => {
-        const aDiff = Math.abs(userPosition.latitude - a.lat) + Math.abs(userPosition.longitude - a.lon);
-        const bDiff = Math.abs(userPosition.latitude - b.lat) + Math.abs(userPosition.longitude - b.lon);
-        if (aDiff < bDiff) return -1;
-        if (aDiff > bDiff) return 1;
+        const aDistance = distance(userPosition.latitude, userPosition.longitude, a.lat, a.lon);
+        const bDistance = distance(userPosition.latitude, userPosition.longitude, b.lat, b.lon);
+        if (aDistance < bDistance) return -1;
+        if (aDistance > bDistance) return 1;
         return 0;
     });
 
