@@ -71,18 +71,21 @@ function displayNearbyStations() {
     for (let key of Object.keys(nearbyStations)) {
         const station = nearbyStations[key];
         const distance = getDistance(userPosition.latitude, userPosition.longitude, station.lat, station.lon);
-        disp.innerHTML += '<div class="card grey lighten-5">';
-        disp.innerHTML += '<div class="card-content">';
-        disp.innerHTML += '<span class="card-title">#' + (Number(key) + 1) + ' ' + station.name + '</span>';
-        disp.innerHTML += '<ul>';
-        disp.innerHTML += '<li>距離: ' + getOptimizedDistance(distance) + '</li>';
-        disp.innerHTML += '<li>...</li>';
-        disp.innerHTML += '</ul>';
-        disp.innerHTML += '</div>';
-        disp.innerHTML += '<div class="card-action">';
-        disp.innerHTML += '<a href="#">This is a link</a>';
-        disp.innerHTML += '</div>';
-        disp.innerHTML += '</div>';
+        let cardHTML = "";
+        cardHTML += '<div class="card grey lighten-5">';
+        cardHTML += '<div class="card-content">';
+        cardHTML += '<span class="card-title">#' + (Number(key) + 1) + ' ' + station.name + '</span>';
+        cardHTML += '<ul>';
+        cardHTML += '<li>距離: ' + getOptimizedDistance(distance) + '</li>';
+        cardHTML += '<li>...</li>';
+        cardHTML += '</ul>';
+        cardHTML += '</div>';
+        cardHTML += '<div class="card-action">';
+        cardHTML += '<a href="#">This is a link</a>';
+        cardHTML += '</div>';
+        cardHTML += '</div>';
+
+        disp.innerHTML += cardText;
     }
 }
 function getOptimizedDistance(distance) {
