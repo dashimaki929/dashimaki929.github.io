@@ -33,7 +33,6 @@ function updateUserPosition() {
 
             console.log(userPosition.latitude, userPosition.longitude);
             console.log(nearbyStations);
-document.getElementById("outtest").value = JSON.stringify(nearbyStations, null, "\t");
             displayNearbyStations();
         },
         error => {
@@ -51,8 +50,12 @@ function deriveNearbyStations() {
         return 0;
     });
 
-    for (let i = 0; i < 10; i++) {
-        nearbyStations[i] = stationsArray[i];
+    const addedStation = [];
+    for (let i = 0; i < 5; i++) {
+        if (!addedStation.includes(stationsArray[i].name)) {
+            nearbyStations[i] = stationsArray[i];
+            addedStation.push(stationsArray[i].name);
+        }
     }
 }
 function getDistance(lat1, lon1, lat2, lon2) {
