@@ -51,11 +51,12 @@ function deriveNearbyStations() {
     });
 
     const addedStation = [];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 256; i++) {
         if (!addedStation.includes(stationsArray[i].name)) {
-            nearbyStations[i] = stationsArray[i];
+            nearbyStations[addedStation.length] = stationsArray[i];
             addedStation.push(stationsArray[i].name);
         }
+        if (addedStation.length > 5) break;
     }
 }
 function getDistance(lat1, lon1, lat2, lon2) {
