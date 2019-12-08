@@ -1,4 +1,19 @@
 var CACHE_DYNAMIC_VERSION = 'dynamic-v1';
+var CACHE_NAME = 'pwa-stations-caches';
+var urlsToCache = [
+    '/dashimaki929.github.io/pwa/nearby-stations/index.html',
+    '/dashimaki929.github.io/data/json/stations.json',
+];
+
+self.addEventListener('install', function(event) {
+    event.waitUntil(
+        caches
+            .open(CACHE_NAME)
+            .then(function(cache) {
+                return cache.addAll(urlsToCache);
+            })
+    );
+});
 
 self.addEventListener('fetch', event => {
 	console.log('[Service Worker] Fetching something ...');
