@@ -71,19 +71,26 @@ function displayNearbyStations() {
     for (let key of Object.keys(nearbyStations)) {
         const station = nearbyStations[key];
         const distance = getDistance(userPosition.latitude, userPosition.longitude, station.lat, station.lon);
-        disp.innerHTML += `
-<div class="card grey lighten-5">
-    <div class="card-content">
-        <span class="card-title">#${Number(key) + 1} ${station.name}</span>
-        <ul>
-            <li>距離: ${distance}km</li>
-            <li>...</li>
-        </ul>
-    </div>
-    <div class="card-action">
-        <a href="#">This is a link</a>
-    </div>
-</div>`;
+        disp.innerHTML += '<div class="card grey lighten-5">';
+        disp.innerHTML += '<div class="card-content">';
+        disp.innerHTML += '<span class="card-title">#' + (Number(key) + 1) + ' ' + station.name + '</span>';
+        disp.innerHTML += '<ul>';
+        disp.innerHTML += '<li>距離: ' + getOptimizedDistance(distance) + '</li>';
+        disp.innerHTML += '<li>...</li>';
+        disp.innerHTML += '</ul>';
+        disp.innerHTML += '</div>';
+        disp.innerHTML += '<div class="card-action">';
+        disp.innerHTML += '<a href="#">This is a link</a>';
+        disp.innerHTML += '</div>';
+        disp.innerHTML += '</div>';
+    }
+}
+function getOptimizedDistance(distance) {
+    const roundedDist = Math.round(distance * 1000) / 1000;
+    if (roundedDist < 1) {
+        return "約" + (roundedDist * 1000) + "m";
+    } else {
+        return "約" + roundedDist + "km";
     }
 }
 
