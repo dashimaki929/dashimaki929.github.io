@@ -9,7 +9,7 @@ xhr.onreadystatechange = function() {
         case 4: {
             if(xhr.status == 200 || xhr.status == 304) {
                 stations = JSON.parse(xhr.responseText);
-                updateUserPosition();
+                // updateUserPosition();
             } else {
                 console.log('Failed. HttpStatus: ' + xhr.statusText);
             }
