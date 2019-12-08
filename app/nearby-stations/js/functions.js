@@ -25,6 +25,7 @@ let userPosition = {
 function updateUserPosition() {
     if (!navigator.geolocation){
         window.alert("Geolocation is not supported.");
+        toggleRunning();
     }
 
     navigator.geolocation.getCurrentPosition(
@@ -39,6 +40,7 @@ function updateUserPosition() {
         },
         error => {
             window.alert("Unable to retrieve your location.");
+            toggleRunning();
         }
     );
 }
