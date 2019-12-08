@@ -26,8 +26,8 @@
 }
 
 @media only screen and (min-width: 601px) {
-    #disp-wrapper {
-        margin-left: 28%;
+    #resultDisp {
+        margin-left: 20%;
     }
 }
 
