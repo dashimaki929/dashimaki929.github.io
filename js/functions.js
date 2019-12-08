@@ -7,6 +7,9 @@ xhr.onreadystatechange = function() {
         case 4: {
             if(xhr.status == 200 || xhr.status == 304) {
                 stations = JSON.parse(xhr.responseText);
+                for (let key of Object.keys(stations)) {
+                    stations[key].code = key;
+                }
             } else {
                 console.log('Failed. HttpStatus: ' + xhr.statusText);
             }
