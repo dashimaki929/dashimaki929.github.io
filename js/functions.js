@@ -1,3 +1,5 @@
+const showStationsLength = 10;
+
 let nearbyStations = {};
 let stations = {};
 
@@ -7,9 +9,6 @@ xhr.onreadystatechange = function() {
         case 4: {
             if(xhr.status == 200 || xhr.status == 304) {
                 stations = JSON.parse(xhr.responseText);
-                for (let key of Object.keys(stations)) {
-                    stations[key].code = key;
-                }
             } else {
                 console.log('Failed. HttpStatus: ' + xhr.statusText);
             }
@@ -60,7 +59,7 @@ function deriveNearbyStations() {
             addedStation.push(stationsArray[i].name);
         }
 
-        if (addedStation.length >= 5) break;
+        if (addedStation.length >= showStationsLength) break;
     }
 }
 function getDistance(lat1, lon1, lat2, lon2) {
@@ -91,6 +90,11 @@ function displayNearbyStations() {
 
         disp.innerHTML += cardHTML;
     }
+
+    disp.innerHTML += 
+            '<iframe src="https://maps.google.co.jp/maps?output=embed&q=' + 
+            [userPosition.latitude, userPosition.longitude].join(",") + 
+            '"></iframe>'
 }
 function getOptimizedDistance(distance) {
     const roundedDist = Math.round(distance * 1000) / 1000;
