@@ -24,6 +24,11 @@ xhr.onreadystatechange = function() {
 function toggleRunning() {
     const icon = document.getElementById("gpsIcon");
     if (isRunning) {
+        isRunning = false;
+        clearInterval(interval);
+        icon.textContent = "gps_off";
+    } else {
+        isRunning = true;
         interval = setInterval(() => {
             updateUserPosition();
             if (icon.textContent === "gps_not_fixed") {
@@ -32,9 +37,6 @@ function toggleRunning() {
                 icon.textContent = "gps_not_fixed";
             }
         }, 1000);
-    } else {
-        clearInterval(interval);
-        icon.textContent = "gps_off";
     }
 }
 
