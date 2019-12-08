@@ -83,13 +83,9 @@ function displayNearbyStations() {
         cardHTML += '<div class="card grey lighten-5">';
         cardHTML += '<div class="card-content">';
         cardHTML += '<span class="card-title">#' + (Number(key) + 1) + ' ' + station.name + '</span>';
+        cardHTML += '<p>距離: ' + getOptimizedDistance(distance) + '</p>';
         cardHTML += '<ul>';
-        cardHTML += '<li>距離: ' + getOptimizedDistance(distance) + '</li>';
-        cardHTML += '<li>...</li>';
         cardHTML += '</ul>';
-        cardHTML += '</div>';
-        cardHTML += '<div class="card-action">';
-        cardHTML += '<a href="#">This is a link</a>';
         cardHTML += '</div>';
         cardHTML += '</div>';
 
