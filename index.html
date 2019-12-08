@@ -5,73 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title>Nearby Stations</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/css/materialize.min.css">
 </head>
 <body>
-    <button onclick="updateUserPosition()">search</button>
-    <script>
-    let nearbyStations = {};
-    let stations = {};
+    <nav>
+        <div class="nav-wrapper teal">
+            <a href="#" class="brand-logo" style="margin: 0 16px"><i class="material-icons">gps_fixed</i>Nearby Stations</a>
+            <ul id="nav-mobile" class="right hide-on-med-and-down">
+                <li><a href="#">Sass</a></li>
+                <li><a href="#">Components</a></li>
+                <li><a href="#">JavaScript</a></li>
+            </ul>
+        </div>
+    </nav>
+    <div class="fixed-action-btn">
+        <a class="btn-floating btn-large teal">
+            <i class="large material-icons waves-effect waves-light teal" onclick="updateUserPosition()">gps_fixed</i>
+        </a>
+    </div>
 
-    const xhr = new XMLHttpRequest();
-    xhr.onreadystatechange = function() {
-        switch (xhr.readyState) {
-            case 4: {
-                if(xhr.status == 200 || xhr.status == 304) {
-                    stations = JSON.parse(xhr.responseText);
-                } else {
-                    console.log('Failed. HttpStatus: ' + xhr.statusText);
-                }
-                break;
-            }
-        }
-    };
-       
-    let userPosition = {
-        latitude: null,
-        longitude: null
-    }
-    const deriveNearbyStations = () => {
-        const stationsArray = Object.values(stations);
-        stationsArray.sort((a, b) => {
-            const aDiff = Math.abs(userPosition.latitude - a.lat) + Math.abs(userPosition.longitude - a.lon);
-            const bDiff = Math.abs(userPosition.latitude - b.lat) + Math.abs(userPosition.longitude - b.lon);
-            if (aDiff < bDiff) return -1;
-            if (aDiff > bDiff) return 1;
-        	return 0;
-        });
+    <textarea id="outtest" style="height:500px;font-size:10px"></textarea>
 
-        for (let i = 0; i < 10; i++) {
-            nearbyStations[i] = stationsArray[i];
-        }
-    }
-    const updateUserPosition = () => {
-        if (!navigator.geolocation){
-            window.alert("Geolocation is not supported.");
-        }
-
-        navigator.geolocation.getCurrentPosition(
-            position => {
-                userPosition.latitude = position.coords.latitude;
-                userPosition.longitude = position.coords.longitude;
-                deriveNearbyStations();
-
-                console.log(userPosition.latitude, userPosition.longitude);
-                console.log(nearbyStations);
-                document.body.innerHTML = "<textarea rows=\"64\" cols=\"64\">" + JSON.stringify(nearbyStations, null, "\t") + "/textarea";
-            },
-            error => {
-                window.alert("Unable to retrieve your location.");
-            }
-        );
-    }
-
-    const doRequest = (method, url) => {
-        xhr.open(method, url, false);
-        xhr.setRequestHeader("Content-Type", "application/json");
-        xhr.send();
-        xhr.abort();
-    }
-    doRequest("GET", "https://dashimaki929.github.io/json/stations.json");
-   </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/materialize/1.0.0/js/materialize.min.js"></script>
+    <script src="./js/functions.js"></script>
 </body>
 </html>
