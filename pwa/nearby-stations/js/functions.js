@@ -3,6 +3,9 @@ const showStationsLength = 10;
 let nearbyStations = {};
 let stations = {};
 
+let isRunning = false;
+let interval = null;
+
 const xhr = new XMLHttpRequest();
 xhr.onreadystatechange = function() {
     switch (xhr.readyState) {
@@ -18,6 +21,24 @@ xhr.onreadystatechange = function() {
     }
 };
  
+
+function toggleRunning() {
+    const icon = document.getElementById("gpsIcon");
+    if (isRunning) {
+        interval = setInterval(() => {
+            updateUserPosition();
+            if (icon.textContent === "gps_not_fixed") {
+                icon.textContent = "gps_fixed";
+            } else {
+                icon.textContent = "gps_not_fixed";
+            }
+        }, 1000);
+    } else {
+        clearInterval(interval);
+        icon.textContent = "gps_off";
+    }
+}
+
 
 let userPosition = {
     latitude: null,
