@@ -87,7 +87,7 @@ function displayNearbyStations() {
         cardHTML += '</ul>';
         cardHTML += '</div>';
         cardHTML += '<div class="card-action">';
-        cardHTML += '<a href="https://www.google.com/search?q=' + station.name + '" target="_blank" rel=""noopener"">Googleで検索</a>';
+        cardHTML += '<a href="https://www.google.com/search?q=' + station.name + '駅" target="_blank" rel=""noopener"">Googleで検索</a>';
         cardHTML += '</div>';
         cardHTML += '</div>';
 
