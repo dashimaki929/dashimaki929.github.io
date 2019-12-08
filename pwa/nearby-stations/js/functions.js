@@ -30,6 +30,8 @@ function toggleRunning() {
     } else {
         isRunning = true;
         updateUserPosition();
+        icon.textContent = "gps_fixed";
+
         interval = setInterval(() => {
             updateUserPosition();
             if (icon.textContent === "gps_fixed") {
