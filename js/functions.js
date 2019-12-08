@@ -86,15 +86,13 @@ function displayNearbyStations() {
         cardHTML += '<ul>';
         cardHTML += '</ul>';
         cardHTML += '</div>';
+        cardHTML += '<div class="card-action">';
+        cardHTML += '<a href="https://www.google.com/search?q=' + station.name + '" target="_blank" rel=""noopener"">Googleで検索</a>';
+        cardHTML += '</div>';
         cardHTML += '</div>';
 
         disp.innerHTML += cardHTML;
     }
-
-    disp.innerHTML += 
-            '<iframe id="map" src="https://maps.google.co.jp/maps?output=embed&q=' + 
-            [userPosition.latitude, userPosition.longitude].join(",") + 
-            '"></iframe>'
 }
 function getOptimizedDistance(distance) {
     const roundedDist = Math.round(distance * 1000) / 1000;
