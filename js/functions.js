@@ -92,7 +92,7 @@ function displayNearbyStations() {
     }
 
     disp.innerHTML += 
-            '<iframe src="https://maps.google.co.jp/maps?output=embed&q=' + 
+            '<iframe id="map" src="https://maps.google.co.jp/maps?output=embed&q=' + 
             [userPosition.latitude, userPosition.longitude].join(",") + 
             '"></iframe>'
 }
