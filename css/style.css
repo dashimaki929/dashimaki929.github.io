@@ -27,7 +27,7 @@
 
 @media only screen and (min-width: 601px) {
     #resultDisp {
-        margin-left: 20%;
+        margin-left: calc(100% / 12 * 2);
     }
 }
 
