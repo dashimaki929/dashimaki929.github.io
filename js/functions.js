@@ -52,11 +52,12 @@ function deriveNearbyStations() {
 
     const addedStation = [];
     for (let i = 0; i < 256; i++) {
+        if (addedStation.length > 5) break;
+        
         if (!addedStation.includes(stationsArray[i].name)) {
             nearbyStations[addedStation.length] = stationsArray[i];
             addedStation.push(stationsArray[i].name);
         }
-        if (addedStation.length > 5) break;
     }
 }
 function getDistance(lat1, lon1, lat2, lon2) {
