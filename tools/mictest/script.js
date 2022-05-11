@@ -9,6 +9,8 @@ navigator.mediaDevices.getUserMedia({ audio: true, video: false })
 
 async function setDeviceList() {
     navigator.mediaDevices.enumerateDevices().then(devices => {
-        console.log(devices);
+        devices.forEach(device => {
+            console.log(`${device.kind}: ${device.label}, id = ${device.deviceId}`);
+        });
     });
 }
