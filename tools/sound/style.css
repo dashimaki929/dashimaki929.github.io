@@ -1,0 +1,11 @@
+* {
+    margin: 0px;
+    padding: 0px;
+    font-size: 0px;
+}
+canvas {
+    background: black;
+}
+select, button, input {
+    font-size: 16px;
+}
