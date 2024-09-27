@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify token check</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body {
+            height: 100%;
+            background: linear-gradient(135deg, rgba(233, 84, 32, 1) 0%, rgba(94, 39, 80, 1) 70%, rgba(44, 0, 30, 1) 100%);
+        }
+
+        body {
+            
+        }
+        h2 {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: auto;
+
+            height: 100%;
+            max-width: 75%;
+
+            font-size: 2rem;
+            color: white;
+            word-break: break-all;
+        }
+    </style>
+</head>
+
+<body>
+    <h2 id="code"></h2>
+    <script>
+        const code = document.getElementById('code');
+
+        const url = new URL(location.href);
+        code.textContent = url.searchParams.get('code');
+
+        code.addEventListener('click', () => {
+            navigator.clipboard.writeText(code.textContent);
+            alert('Copied to clipboard!')
+        })
+
+    </script>
+</body>
+
+</html>
