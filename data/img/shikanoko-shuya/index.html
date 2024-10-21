@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body {
+            height: 100%;
+        }
+
+        div {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: auto;
+
+            height: 100%;
+            max-width: 75%;
+
+            font-size: 2rem;
+            color: white;
+            word-break: break-all;
+        }
+
+        span {
+            position: relative;
+            background: #0F0;
+            height: 640px;
+            width: 640px;
+        }
+
+        object {
+            position: absolute;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            margin: auto;
+
+            transition: 1s;
+        }
+
+        #head {
+            bottom: 195px;
+
+            transform-origin: 45% 100%;
+            animation: shake-head .65s infinite linear, wave-head .65s infinite linear;
+        }
+
+        #body {
+            top: 114px;
+            right: 32px;
+
+            transform-origin: 50% 100%;
+            animation: wave-body .65s infinite linear;
+        }
+
+        #hand-left {
+            top: 24px;
+            right: 116px;
+
+            transform-origin: 75% 23%;
+            animation: wave-left .65s infinite linear;
+        }
+
+        #hand-right {
+            top: 8px;
+            left: 67px;
+
+            transform-origin: 20% 50%;
+            animation: wave-right .65s infinite linear;
+        }
+
+        @keyframes shake-head {
+            5% {
+                bottom: 195px;
+            }
+
+            20% {
+                bottom: 195px;
+            }
+
+            30% {
+                bottom: 185px;
+            }
+
+            55% {
+                bottom: 195px;
+            }
+
+            70% {
+                bottom: 195px;
+            }
+
+            80% {
+                bottom: 185px;
+            }
+        }
+
+        @keyframes wave-head {
+            30% {
+                transform: rotate(8deg);
+            }
+
+            80% {
+                transform: rotate(-4deg);
+            }
+        }
+
+        @keyframes wave-body {
+            5% {
+                transform: skew(0) scale(1, 1);
+            }
+
+            20% {
+                transform: skew(0) scale(1, 1);
+            }
+
+            30% {
+                transform: skew(-1.5deg) scale(1, 0.96);
+            }
+
+            55% {
+                transform: skew(0) scale(1, 1);
+            }
+
+            70% {
+                transform: skew(0) scale(1, 1);
+            }
+
+            80% {
+                transform: skew(-1deg) scale(1, 0.96);
+            }
+        }
+
+        @keyframes wave-left {
+            20% {
+                top: 24px;
+            }
+
+            30% {
+                top: 29px;
+            }
+
+            50% {
+                top: 24px;
+                transform: rotate(34deg);
+            }
+
+            70% {
+                top: 24px;
+            }
+
+            80% {
+                top: 29px;
+                transform: rotate(-11deg);
+            }
+
+            100% {
+                top: 24px;
+            }
+        }
+
+        @keyframes wave-right {
+            20% {
+                top: 8px;
+
+            }
+
+            30% {
+                top: 13px;
+                transform: rotate(38deg);
+            }
+
+            50% {
+                top: 8px;
+            }
+
+            70% {
+                top: 8px;
+            }
+
+            80% {
+                top: 13px;
+            }
+
+            100% {
+                top: 8px;
+                transform: rotate(-7deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div>
+        <span>
+            <object id="body" type="image/svg+xml" data="./parts/body.svg"></object>
+            <object id="head" type="image/svg+xml" data="./parts/head.svg"></object>
+            <object id="hand-left" type="image/svg+xml" data="./parts/hand-left.svg"></object>
+            <object id="hand-right" type="image/svg+xml" data="./parts/hand-right.svg"></object>
+        </span>
+    </div>
+</body>
+
+</html>
