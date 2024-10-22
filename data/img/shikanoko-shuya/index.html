@@ -14,10 +14,11 @@
         html,
         body {
             height: 100%;
-            background:#0F0
+            min-height: 640px;
+            background: #0f0
         }
 
-        div {
+        main {
             display: flex;
             justify-content: center;
             align-items: center;
@@ -31,11 +32,10 @@
             word-break: break-all;
         }
 
-        span {
+        div {
             position: relative;
-            background: #0F0;
-            height: 640px;
-            width: 640px;
+            min-height: 640px;
+            min-width: 640px;
         }
 
         object {
@@ -45,15 +45,23 @@
             bottom: 0;
             left: 0;
             margin: auto;
+        }
 
-            transition: 1s;
+        label {
+            display: block;
+            text-align: center;
+
+            color: black;
+            font-size: 1.5rem;
+        }
+
+        input {
+            width: 80%;
         }
 
         #head {
             bottom: 195px;
-
             transform-origin: 45% 100%;
-            animation: shake-head .65s infinite linear, wave-head .65s infinite linear;
         }
 
         #body {
@@ -61,7 +69,6 @@
             right: 32px;
 
             transform-origin: 50% 100%;
-            animation: wave-body .65s infinite linear;
         }
 
         #hand-left {
@@ -69,7 +76,6 @@
             right: 116px;
 
             transform-origin: 75% 23%;
-            animation: wave-left .65s infinite linear;
         }
 
         #hand-right {
@@ -77,7 +83,6 @@
             left: 67px;
 
             transform-origin: 20% 50%;
-            animation: wave-right .65s infinite linear;
         }
 
         @keyframes shake-head {
@@ -202,14 +207,52 @@
 </head>
 
 <body>
-    <div>
-        <span>
+    <main>
+        <div>
             <object id="body" type="image/svg+xml" data="./parts/body.svg"></object>
             <object id="head" type="image/svg+xml" data="./parts/head.svg"></object>
             <object id="hand-left" type="image/svg+xml" data="./parts/hand-left.svg"></object>
             <object id="hand-right" type="image/svg+xml" data="./parts/hand-right.svg"></object>
-        </span>
-    </div>
+        </div>
+        
+    </main>
+
+    <label for="speed">
+        <span id="disp">speed: x1.00</span>
+        <input id="speed" type="range" value="0.64" step="0.01" min="0.01" max="1.0">
+    </label>
+
+    <script>
+        window.onload = () => {
+            const disp = document.getElementById('disp');
+            const speed = document.getElementById('speed');
+
+            const parts = {
+                head: document.getElementById('head'),
+                body: document.getElementById('body'),
+                handLeft: document.getElementById('hand-left'),
+                handRight: document.getElementById('hand-right')
+            }
+
+            parts.head.style.animationName = 'shake-head, wave-head';
+            parts.body.style.animationName = 'wave-body';
+            parts.handLeft.style.animationName = 'wave-left';
+            parts.handRight.style.animationName = 'wave-right';
+
+            Object.values(parts).forEach(p => {
+                p.style.animationDuration = `${speed.value}s`;
+                p.style.animationTimingFunction = 'linear';
+                p.style.animationIterationCount = 'infinite';
+            });
+
+            speed.oninput = () => {
+                Object.values(parts).forEach(p => {
+                    disp.textContent = `speed: x${(0.64 / speed.value).toFixed(2)}`;
+                    p.style.animationDuration = `${speed.value}s`;
+                });
+            }
+        };
+    </script>
 </body>
 
 </html>
