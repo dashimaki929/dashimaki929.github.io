@@ -64,7 +64,10 @@
   .tile.main { box-shadow: 0 0 0 2px var(--green); z-index: 2; }
   .tile .player, .tile .player iframe { position: absolute; inset: 0; width: 100% !important; height: 100% !important; border: 0; }
   .tile .catcher { position: absolute; inset: 0; cursor: pointer; z-index: 3; }
-  .tile.main .catcher { display: none; }  /* 大画面ではプレイヤーを直接操作できるように */
+  /* 大画面では下部（Twitch の再生・音量・画質バー）だけプレイヤーを直接操作できるように空ける */
+  .tile.main .catcher { bottom: 56px; cursor: zoom-out; }
+  .tile:fullscreen { border-radius: 0; box-shadow: none; }
+  .tile:fullscreen .catcher { cursor: default; }
   .tile:not(.main):hover { box-shadow: 0 0 0 2px rgba(255,255,255,.35); }
   .tile .label { position: absolute; left: 8px; bottom: 8px; z-index: 4; display: flex; align-items: center; gap: 6px;
     background: rgba(0,0,0,.6); border-radius: 4px; padding: 3px 8px; font-size: 13px; font-weight: 600;
@@ -219,7 +222,21 @@
     const t = { el, player: null, muted: true, ready: false };
     tiles.set(ch, t);
 
-    el.querySelector(".catcher").addEventListener("click", () => setFocus(ch));
+    // クリック：小さい配信 → 大画面に / 大画面の配信 → 等分割に戻す
+    // ダブルクリック：全画面（シングルクリックと区別するため、大画面側は少し待ってから判定）
+    const catcher = el.querySelector(".catcher");
+    let clickTimer = null;
+    catcher.addEventListener("click", () => {
+      if (focused !== ch) { setFocus(ch); return; }
+      if (document.fullscreenElement) return;   // 全画面中のシングルクリックは無視
+      clearTimeout(clickTimer);
+      clickTimer = setTimeout(() => { clickTimer = null; setFocus(null); }, 250);
+    });
+    catcher.addEventListener("dblclick", () => {
+      clearTimeout(clickTimer); clickTimer = null;
+      if (focused !== ch) setFocus(ch);
+      toggleFullscreen(el);
+    });
     el.querySelector(".focus").addEventListener("click", (e) => { e.stopPropagation(); setFocus(focused === ch ? null : ch); });
     el.querySelector(".mute").addEventListener("click", (e) => { e.stopPropagation(); setMuted(ch, !t.muted); });
     el.querySelector(".close").addEventListener("click", (e) => { e.stopPropagation(); removeChannel(ch); });
@@ -256,6 +273,11 @@
     } catch (_) {}
   }
 
+  function toggleFullscreen(el) {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
+  }
+
   function setMuted(ch, muted) {
     const t = tiles.get(ch); if (!t) return;
     t.muted = muted; applyMuted(ch); updateTileUI(ch);
@@ -267,6 +289,9 @@
     t.el.querySelector(".mute").textContent = t.muted ? "🔇" : "🔊";
     t.el.querySelector(".focus").textContent = focused === ch ? "▦" : "⛶";
     t.el.classList.toggle("main", focused === ch);
+    t.el.querySelector(".catcher").title = focused === ch
+      ? "クリックで等分割に戻す ／ ダブルクリックで全画面"
+      : "クリックで大画面 ／ ダブルクリックで全画面";
   }
 
   // ---------- channel ops ----------
@@ -396,7 +421,8 @@
     const open = force ?? !document.body.classList.contains("chat-open");
     document.body.classList.toggle("chat-open", open);
     $("#chatBtn").classList.toggle("on", open);
-    if (open) setChat(chatChannel && channels.includes(chatChannel) ? chatChannel : (focused || channels[0]));
+    // 大画面の配信があれば常にそれを優先
+    if (open) setChat(focused || (channels.includes(chatChannel) ? chatChannel : channels[0]));
     requestAnimationFrame(layout);
   }
 
