@@ -178,6 +178,7 @@
   <div class="sep"></div>
   <button class="it" id="ctxFocus"></button>
   <button class="it" id="ctxFull">全画面で表示</button>
+  <button class="it" id="ctxReload">この配信を再読み込み <span>↻</span></button>
   <button class="it" id="ctxOpen">開く ↗</button>
   <div class="sep"></div>
   <button class="it danger" id="ctxRemove">この配信を閉じる</button>
@@ -437,6 +438,18 @@
     });
   }
 
+  // 止まった・遅延が溜まった配信を、タイルの位置や音量・ミュート状態はそのままでプレイヤーだけ作り直す
+  function reloadTile(ch) {
+    const t = tiles.get(ch); if (!t) return;
+    try { t.api && t.api.pause(); } catch (_) {}
+    t.api = null; t.ready = false;
+    const box = document.createElement("div");
+    box.className = "player";
+    t.el.querySelector(".player").replaceWith(box);   // 古い iframe ごと破棄
+    (isYT(ch) ? mountYouTube : mountTwitch)(ch, t, box);
+    toast(`${nameOf(ch)} を再読み込みしました`);
+  }
+
   function setName(ch, name) {
     const t = tiles.get(ch); if (!t) return;
     t.name = name;
@@ -519,6 +532,7 @@
   };
   $("#ctxFocus").onclick = () => { const ch = ctxCh; closeCtx(); setFocus(focused === ch ? null : ch); };
   $("#ctxFull").onclick = () => { const ch = ctxCh; closeCtx(); if (focused !== ch) setFocus(ch); toggleFullscreen(tiles.get(ch).el); };
+  $("#ctxReload").onclick = () => { const ch = ctxCh; closeCtx(); reloadTile(ch); };
   $("#ctxOpen").onclick = () => { window.open(watchUrl(ctxCh), "_blank", "noopener"); closeCtx(); };
   $("#ctxRemove").onclick = () => { const ch = ctxCh; closeCtx(); removeChannel(ch); };
 
