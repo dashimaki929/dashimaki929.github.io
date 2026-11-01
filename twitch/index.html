@@ -389,6 +389,7 @@
 
   function setMuted(ch, muted) {
     const t = tiles.get(ch); if (!t) return;
+    if (!muted && t.volume < 0.01) t.volume = 0.5;   // 音量 0 のままミュート解除しても無音にならないように
     t.muted = muted; t.touched = Date.now(); applyMuted(ch); updateTileUI(ch);
   }
 
@@ -435,14 +436,29 @@
     try { t.player && t.player.pause(); } catch (_) {}
     t.el.remove(); tiles.delete(ch);
     channels = channels.filter((c) => c !== ch);
-    if (focused === ch) focused = null;
+    const wasFocused = focused === ch;
     if (chatChannel === ch) chatChannel = null;
+    if (wasFocused) setFocus(null);   // 大画面の配信を閉じたら、元のミュート状態に戻してグリッドへ
     refresh(); save();
   }
 
+  // 大画面にする直前のミュート状態（大画面をやめたときに戻す）
+  let preFocusMute = null;
+
   function setFocus(ch) {
-    focused = ch && channels.includes(ch) ? ch : null;
-    if (focused && document.body.classList.contains("chat-open")) setChat(focused);
+    const next = ch && channels.includes(ch) ? ch : null;
+    // グリッド → 大画面 に入るときだけ保存（大画面どうしの切り替えでは上書きしない）
+    if (next && !focused) preFocusMute = new Map(channels.map((c) => [c, tiles.get(c).muted]));
+    focused = next;
+    if (focused) {
+      // 大画面の配信だけ音を出し、他はミュート
+      for (const c of channels) setMuted(c, c !== focused);
+      if (document.body.classList.contains("chat-open")) setChat(focused);
+    } else if (preFocusMute) {
+      // 大画面をやめたら元のミュート状態に戻す
+      for (const [c, m] of preFocusMute) if (tiles.has(c)) setMuted(c, m);
+      preFocusMute = null;
+    }
     channels.forEach(updateTileUI);
     refresh();
   }
