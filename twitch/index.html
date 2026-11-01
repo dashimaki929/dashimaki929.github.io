@@ -193,12 +193,14 @@
   const HOST = location.hostname;            // Twitch 埋め込みの parent / YouTube チャットの embed_domain に必須
   const ASPECT = 16 / 9;
   const STORE_KEY = "multi-twitch:channels"; // 以前の保存データをそのまま引き継ぐためキー名は据え置き
-  const VOL_KEY = "multi-twitch:volumes";    // 配信ごとの音量（次回も同じ音量で開く）
+  // YouTube の配信ごとの音量（次回も同じ音量で開く）。
+  // Twitch はログイン中のアカウントの音量設定を Twitch 側が反映するので、こちらでは保存・上書きしない
+  const VOL_KEY = "multi-twitch:volumes";
   const DEFAULT_VOLUME = 0.5;
   let volStore = {};
   try { volStore = JSON.parse(localStorage.getItem(VOL_KEY) || "{}") || {}; } catch (_) {}
   function rememberVolume(ch, v) {
-    if (!(v > 0)) return;   // 0 はミュート扱いなので保存しない
+    if (!isYT(ch) || !(v > 0)) return;   // Twitch は対象外 / 0 はミュート扱いなので保存しない
     volStore[ch] = Math.round(v * 100) / 100;
     try { localStorage.setItem(VOL_KEY, JSON.stringify(volStore)); } catch (_) {}
   }
@@ -443,11 +445,15 @@
     renderChips(); renderChatSelect();
   }
 
-  // プレイヤーの準備ができたら、保存してある音量（なければ 50%）とミュート状態を反映
+  // プレイヤーの準備ができたら音量とミュート状態を反映
+  //   YouTube: 保存してある音量（なければ 50%） / Twitch: Twitch 側の音量をそのまま採用
   function onPlayerReady(ch) {
     const t = tiles.get(ch); if (!t || !t.api) return;
     t.ready = true; t.touched = Date.now();
-    try { t.api.setVolume(t.volume > 0 ? t.volume : DEFAULT_VOLUME); } catch (_) {}
+    try {
+      if (isYT(ch)) t.api.setVolume(t.volume > 0 ? t.volume : DEFAULT_VOLUME);
+      else { const v = t.api.getVolume(); if (v > 0) t.volume = v; }   // Twitch はプレイヤーの音量をそのまま使う
+    } catch (_) {}
     applyMuted(ch);
   }
 
