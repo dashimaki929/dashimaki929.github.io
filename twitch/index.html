@@ -392,6 +392,7 @@
         pause: () => p.pause(),
       };
       p.addEventListener(Twitch.Player.READY, () => onPlayerReady(ch));
+      p.addEventListener(Twitch.Player.PLAYING, () => onPlayerPlaying(ch));
     });
   }
 
@@ -425,7 +426,7 @@
       const p = new YT.Player(iframe, {
         events: {
           onReady: () => { onPlayerReady(ch); updateMeta(); try { p.playVideo(); } catch (_) {} },
-          onStateChange: updateMeta,
+          onStateChange: (e) => { updateMeta(); if (e.data === 1) onPlayerPlaying(ch); },
         },
       });
       t.api = {
@@ -463,6 +464,9 @@
   function onPlayerReady(ch) {
     const t = tiles.get(ch); if (!t || !t.api) return;
     t.ready = true; t.touched = Date.now();
+    // 再生が始まる前に音ありにすると、ブラウザの自動再生制限で止まったり固まったりするので、
+    // 再生が始まるまではミュートのまま待つ（onPlayerPlaying で本来の状態に戻す）
+    t.waitPlay = true;
     try {
       if (isYT(ch)) t.api.setVolume(t.volume > 0 ? t.volume : DEFAULT_VOLUME);
       else { const v = t.api.getVolume(); if (v > 0) t.volume = v; }   // Twitch はプレイヤーの音量をそのまま使う
@@ -470,10 +474,17 @@
     applyMuted(ch);
   }
 
+  function onPlayerPlaying(ch) {
+    const t = tiles.get(ch); if (!t || !t.waitPlay) return;
+    t.waitPlay = false; t.touched = Date.now();
+    applyMuted(ch);
+  }
+
   function applyMuted(ch) {
     const t = tiles.get(ch);
     if (!t || !t.api || !t.ready) return;
     try {
+      if (t.waitPlay) { t.api.setMuted(true); return; }   // 再生開始待ち：見た目上の設定は保ったまま実際はミュート
       t.api.setMuted(t.muted);
       if (!t.muted && t.api.getVolume() < 0.01) t.api.setVolume(t.volume || 0.5);
     } catch (_) {}
@@ -508,7 +519,7 @@
     const t = tiles.get(ch); if (!t) return;
     ctxCh = ch;
     // プレイヤー側のコントロールで変更された値も拾う
-    if (t.api && t.ready) {
+    if (t.api && t.ready && !t.waitPlay) {
       try { t.volume = t.api.getVolume(); t.muted = t.api.getMuted(); updateTileUI(ch); } catch (_) {}
     }
     $("#ctxName").textContent = nameOf(ch);
@@ -578,7 +589,7 @@
   setInterval(() => {
     for (const [ch, t] of tiles) {
       // こちらで変更した直後はプレイヤー側の値がまだ古いことがあるので少し待つ
-      if (!t.api || !t.ready || Date.now() - (t.touched || 0) < 2000) continue;
+      if (!t.api || !t.ready || t.waitPlay || Date.now() - (t.touched || 0) < 2000) continue;
       try {
         const m = t.api.getMuted(), v = t.api.getVolume();
         if (m !== t.muted || Math.abs(v - t.volume) > 0.005) {
