@@ -65,7 +65,10 @@
   .tile .player, .tile .player iframe { position: absolute; inset: 0; width: 100% !important; height: 100% !important; border: 0; }
   .tile .catcher { position: absolute; inset: 0; cursor: pointer; z-index: 3; }
   /* 大画面では下部（Twitch の再生・音量・画質バー）だけプレイヤーを直接操作できるように空ける */
-  .tile.main .catcher { bottom: 56px; cursor: zoom-out; }
+  .tile.main .catcher { bottom: 56px; }
+  /* Twitch は「プレイヤーの上に何か重なっている」と自動再生しないため、
+     再生が始まるまではオーバーレイを一切出さない */
+  .tile.booting .catcher, .tile.booting .label, .tile.booting .tools { display: none; }
   .tile:fullscreen { border-radius: 0; box-shadow: none; }
   .tile:fullscreen .catcher { cursor: default; }
   .tile:not(.main):hover { box-shadow: 0 0 0 2px rgba(255,255,255,.35); }
@@ -208,7 +211,7 @@
   // ---------- tiles ----------
   function createTile(ch) {
     const el = document.createElement("div");
-    el.className = "tile";
+    el.className = "tile booting";
     el.innerHTML = `
       <div class="player"></div>
       <div class="catcher" title="クリックで大画面"></div>
@@ -248,6 +251,7 @@
       if (!tiles.has(ch)) return;
       const box = el.querySelector(".player");
       if (!ok) {
+        el.classList.remove("booting");
         box.innerHTML = `<div class="placeholder">${ch}<br>（埋め込みを読み込めませんでした）</div>`;
         return;
       }
@@ -260,6 +264,10 @@
         t.ready = true;
         applyMuted(ch);
       });
+      // 再生が始まった（またはオフラインと判明した）らオーバーレイを有効化
+      const booted = () => el.classList.remove("booting");
+      t.player.addEventListener(Twitch.Player.PLAYING, booted);
+      t.player.addEventListener(Twitch.Player.OFFLINE, booted);
     });
     return t;
   }
