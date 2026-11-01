@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Multi Twitch Viewer</title>
+<title>Multi Stream Viewer</title>
 <style>
   :root {
     --bg: #1e1f22;
@@ -29,7 +29,7 @@
   .brand { font-weight: 700; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
   .brand::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--twitch); }
   #addForm { display: flex; gap: 6px; }
-  #chInput { width: 260px; background: var(--bg3); border: 1px solid transparent; border-radius: 6px;
+  #chInput { width: 320px; background: var(--bg3); border: 1px solid transparent; border-radius: 6px;
     color: var(--text); padding: 7px 10px; outline: none; }
   #chInput:focus { border-color: var(--accent); }
   .btn { background: var(--bg3); border: 0; border-radius: 6px; padding: 7px 12px; white-space: nowrap; }
@@ -93,6 +93,13 @@
   .placeholder { position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
     color: var(--muted); font-size: 13px; padding: 12px; background: linear-gradient(135deg, #2b2d31, #232428); }
 
+  /* ---------- platform badge ---------- */
+  .pf { display: inline-block; width: 8px; height: 8px; border-radius: 2px; flex: none; }
+  .pf-twitch .pf { background: var(--twitch); }
+  .pf-youtube .pf { background: #ff0033; }
+  .chip .pf { margin-right: 6px; }
+  .chip.focused .pf { box-shadow: 0 0 0 1px #fff; }
+
   /* ---------- context menu (Discord 風) ---------- */
   #ctx { position: fixed; z-index: 100; display: none; min-width: 220px; padding: 6px;
     background: #111214; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.5); font-size: 14px; user-select: none; }
@@ -132,9 +139,9 @@
 <body class="is-empty">
 
 <header id="bar">
-  <div class="brand"><span>Multi Twitch</span></div>
+  <div class="brand"><span>Multi Stream</span></div>
   <form id="addForm" autocomplete="off">
-    <input id="chInput" placeholder="チャンネル名 / URL（カンマ区切り可）">
+    <input id="chInput" placeholder="Twitch名 / Twitch・YouTube の URL（カンマ区切り可）">
     <button class="btn primary" type="submit">追加</button>
   </form>
   <div id="chips"></div>
@@ -148,7 +155,7 @@
     <div id="empty">
       <div>
         <h2>配信を追加してください</h2>
-        <div>上の入力欄にチャンネル名を入れて「追加」</div>
+        <div>上の入力欄に Twitch のチャンネル名、または Twitch / YouTube の配信 URL を入れて「追加」</div>
         <div style="margin-top:14px;font-size:13px">
           クリックで大画面 ／ <kbd>Esc</kbd> でグリッドに戻る ／ <kbd>1</kbd>〜<kbd>9</kbd> で切替 ／ <kbd>C</kbd> でチャット
         </div>
@@ -160,7 +167,7 @@
       <select id="chatSel"></select>
       <button class="btn" id="chatClose" title="閉じる">✕</button>
     </div>
-    <iframe id="chatFrame" title="Twitch chat"></iframe>
+    <iframe id="chatFrame" title="chat"></iframe>
   </aside>
 </main>
 
@@ -174,7 +181,7 @@
   <div class="sep"></div>
   <button class="it" id="ctxFocus"></button>
   <button class="it" id="ctxFull">全画面で表示</button>
-  <button class="it" id="ctxOpen">Twitch で開く ↗</button>
+  <button class="it" id="ctxOpen">開く ↗</button>
   <div class="sep"></div>
   <button class="it danger" id="ctxRemove">この配信を閉じる</button>
 </div>
@@ -186,48 +193,106 @@
 (() => {
   "use strict";
 
-  const HOST = location.hostname;            // Twitch 埋め込みの parent に必須
+  const HOST = location.hostname;            // Twitch 埋め込みの parent / YouTube チャットの embed_domain に必須
   const ASPECT = 16 / 9;
-  const STORE_KEY = "multi-twitch:channels";
+  const STORE_KEY = "multi-twitch:channels"; // 以前の保存データをそのまま引き継ぐためキー名は据え置き
 
   const $ = (s) => document.querySelector(s);
   const stage = $("#stage"), chips = $("#chips");
 
-  /** state */
-  let channels = [];          // 表示順
-  let focused = null;         // 大画面中のチャンネル
+  /**
+   * 配信キー
+   *   Twitch            : "channelname"
+   *   YouTube (動画ID)  : "yt:VIDEO_ID"
+   *   YouTube (チャンネルのライブ) : "ytc:UCxxxxxxxx"
+   */
+  let channels = [];          // 表示順（配信キーの配列）
+  let focused = null;         // 大画面中の配信キー
   let chatChannel = null;
-  const tiles = new Map();    // ch -> { el, player, muted, ready }
+  const tiles = new Map();    // key -> { el, api, ready, muted, volume, name, videoId, ... }
 
-  // ---------- Twitch embed script (非同期ロード) ----------
-  const twitchReady = new Promise((resolve) => {
-    if (!HOST) return resolve(false);
-    const s = document.createElement("script");
-    s.src = "https://player.twitch.tv/js/embed/v1.js";
-    s.onload = () => resolve(!!window.Twitch);
-    s.onerror = () => resolve(false);
-    document.head.appendChild(s);
+  // ---------- 外部スクリプト（非同期ロード） ----------
+  function loadScript(src, check) {
+    return new Promise((resolve) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.onload = () => resolve(check());
+      s.onerror = () => resolve(false);
+      document.head.appendChild(s);
+    });
+  }
+  let twitchP = null, ytP = null;
+  const twitchReady = () => twitchP ||= (HOST ? loadScript("https://player.twitch.tv/js/embed/v1.js", () => !!window.Twitch) : Promise.resolve(false));
+  const ytReady = () => ytP ||= new Promise((resolve) => {
+    if (window.YT && window.YT.Player) return resolve(true);
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { prev && prev(); resolve(true); };
+    loadScript("https://www.youtube.com/iframe_api", () => true).then((ok) => { if (!ok) resolve(false); });
+    setTimeout(() => resolve(!!(window.YT && window.YT.Player)), 15000);
   });
 
   if (!HOST) {
-    showWarn("ファイルを直接開いている（file://）ため Twitch の埋め込みは動きません。GitHub Pages か localhost で開いてください。");
+    showWarn("ファイルを直接開いている（file://）ため埋め込みが動きません。GitHub Pages か localhost で開いてください。");
+  }
+
+  // ---------- 入力の解析 ----------
+  const YT_ID = /^[A-Za-z0-9_-]{11}$/;
+  const YT_CH = /^UC[A-Za-z0-9_-]{22}$/;
+
+  function toKey(s) {
+    let m;
+    if ((m = s.match(/^yt:([A-Za-z0-9_-]{11})$/))) return "yt:" + m[1];
+    if ((m = s.match(/^ytc:(UC[A-Za-z0-9_-]{22})$/))) return "ytc:" + m[1];
+    if (/(^|\.|\/)(youtube\.com|youtu\.be)/i.test(s)) {
+      let u;
+      try { u = new URL(/^https?:\/\//i.test(s) ? s : "https://" + s); } catch (_) { return { error: "url" }; }
+      const v = u.searchParams.get("v");
+      if (v && YT_ID.test(v)) return "yt:" + v;
+      if (/youtu\.be$/i.test(u.hostname) && (m = u.pathname.match(/^\/([A-Za-z0-9_-]{11})/))) return "yt:" + m[1];
+      if ((m = u.pathname.match(/^\/(?:live|embed|shorts|v)\/([A-Za-z0-9_-]{11})/))) return "yt:" + m[1];
+      if ((m = u.pathname.match(/^\/channel\/(UC[A-Za-z0-9_-]{22})/))) return "ytc:" + m[1];
+      if (/^\/@/.test(u.pathname)) return { error: "handle" };
+      return { error: "url" };
+    }
+    if ((m = s.match(/twitch\.tv\/([A-Za-z0-9_]+)/i))) s = m[1];
+    s = s.replace(/^@/, "").toLowerCase();
+    return /^[a-z0-9_]{2,25}$/.test(s) ? s : { error: "name" };
+  }
+
+  function parseInput(text) {
+    const ok = [], errors = [];
+    for (const raw of text.split(/[\s,、]+/)) {
+      const s = raw.trim(); if (!s) continue;
+      const k = toKey(s);
+      if (typeof k === "string") ok.push(k); else errors.push(k.error);
+    }
+    return { ok, errors };
+  }
+
+  const isYT = (key) => key.startsWith("yt:") || key.startsWith("ytc:");
+  const ytId = (key) => key.slice(key.indexOf(":") + 1);
+
+  function defaultName(key) {
+    if (key.startsWith("yt:")) return "YouTube " + ytId(key);
+    if (key.startsWith("ytc:")) return "YouTube ライブ";
+    return key;
+  }
+  const nameOf = (key) => tiles.get(key)?.name || defaultName(key);
+
+  function watchUrl(key) {
+    const t = tiles.get(key);
+    if (key.startsWith("yt:")) return "https://www.youtube.com/watch?v=" + ytId(key);
+    if (key.startsWith("ytc:")) return t?.videoId ? "https://www.youtube.com/watch?v=" + t.videoId
+                                                   : "https://www.youtube.com/channel/" + ytId(key) + "/live";
+    return "https://www.twitch.tv/" + key;
   }
 
   // ---------- helpers ----------
-  function parseChannels(text) {
-    return text.split(/[\s,、]+/).map((t) => {
-      t = t.trim();
-      const m = t.match(/twitch\.tv\/([A-Za-z0-9_]+)/i);
-      if (m) t = m[1];
-      return t.replace(/^@/, "").toLowerCase();
-    }).filter((t) => /^[a-z0-9_]{2,25}$/.test(t));
-  }
-
   function showWarn(msg) { const w = $("#warn"); w.textContent = msg; w.style.display = "block"; }
   let toastTimer;
   function toast(msg) {
     const t = $("#toast"); t.textContent = msg; t.classList.add("show");
-    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 1800);
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2600);
   }
 
   function save() {
@@ -240,26 +305,26 @@
 
   function load() {
     const q = new URLSearchParams(location.search).get("c");
-    if (q) return parseChannels(q);
+    if (q) return parseInput(q.replace(/,/g, " ")).ok;
     try { return JSON.parse(localStorage.getItem(STORE_KEY) || "[]"); } catch (_) { return []; }
   }
 
   // ---------- tiles ----------
   function createTile(ch) {
     const el = document.createElement("div");
-    el.className = "tile booting";
+    el.className = "tile booting " + (isYT(ch) ? "pf-youtube" : "pf-twitch");
     el.innerHTML = `
       <div class="player"></div>
       <div class="catcher" title="クリックで大画面"></div>
-      <div class="label"><span class="snd"></span><span class="nm"></span></div>
+      <div class="label"><span class="pf"></span><span class="snd"></span><span class="nm"></span></div>
       <div class="tools">
         <button class="mute" title="ミュート切替">🔇</button>
         <button class="focus" title="大画面 / 戻す">⛶</button>
         <button class="close" title="閉じる">✕</button>
       </div>`;
-    el.querySelector(".nm").textContent = ch;
-    const t = { el, player: null, muted: true, ready: false, volume: 0.5 };
+    const t = { el, api: null, muted: true, ready: false, volume: 0.5, name: null, videoId: null };
     tiles.set(ch, t);
+    el.querySelector(".nm").textContent = nameOf(ch);
 
     // クリック：小さい配信 → 大画面に / 大画面の配信 → 等分割に戻す
     // ダブルクリック：全画面（シングルクリックと区別するため、大画面側は少し待ってから判定）
@@ -288,44 +353,110 @@
     stage.appendChild(el);
     updateTileUI(ch);
 
-    twitchReady.then((ok) => {
-      if (!tiles.has(ch)) return;
-      const box = el.querySelector(".player");
-      if (!ok) {
-        el.classList.remove("booting");
-        box.innerHTML = `<div class="placeholder">${ch}<br>（埋め込みを読み込めませんでした）</div>`;
-        return;
-      }
-      box.id = "p-" + ch + "-" + Math.random().toString(36).slice(2, 7);
-      t.player = new Twitch.Player(box.id, {
+    (isYT(ch) ? mountYouTube : mountTwitch)(ch, t, el.querySelector(".player"));
+    return t;
+  }
+
+  function failTile(ch, t, box, msg) {
+    t.el.classList.remove("booting");
+    const d = document.createElement("div");
+    d.className = "placeholder";
+    d.textContent = `${nameOf(ch)}\n（${msg}）`;
+    d.style.whiteSpace = "pre-line";
+    box.replaceChildren(d);
+  }
+
+  // --- Twitch ---
+  function mountTwitch(ch, t, box) {
+    twitchReady().then((ok) => {
+      if (tiles.get(ch) !== t) return;
+      if (!ok) return failTile(ch, t, box, "Twitch の埋め込みを読み込めませんでした");
+      box.id = "p-" + Math.random().toString(36).slice(2, 9);
+      const p = new Twitch.Player(box.id, {
         channel: ch, parent: [HOST], width: "100%", height: "100%",
         autoplay: true, muted: true,
       });
-      t.player.addEventListener(Twitch.Player.READY, () => {
-        t.ready = true;
-        applyMuted(ch);
-      });
-      // 再生が始まった（またはオフラインと判明した）らオーバーレイを有効化
-      const booted = () => el.classList.remove("booting");
-      t.player.addEventListener(Twitch.Player.PLAYING, booted);
-      t.player.addEventListener(Twitch.Player.OFFLINE, booted);
+      t.api = {
+        getMuted: () => p.getMuted(),
+        setMuted: (m) => p.setMuted(m),
+        getVolume: () => p.getVolume(),
+        setVolume: (v) => p.setVolume(v),
+        pause: () => p.pause(),
+      };
+      p.addEventListener(Twitch.Player.READY, () => { t.ready = true; applyMuted(ch); });
+      // Twitch は「プレイヤーの上に何か重なっている」と自動再生しないため、
+      // 再生が始まる（またはオフラインと判明する）までオーバーレイを出さない
+      const booted = () => t.el.classList.remove("booting");
+      p.addEventListener(Twitch.Player.PLAYING, booted);
+      p.addEventListener(Twitch.Player.OFFLINE, booted);
     });
-    return t;
+  }
+
+  // --- YouTube ---
+  function mountYouTube(ch, t, box) {
+    t.el.classList.remove("booting");   // YouTube はオーバーレイがあっても自動再生される
+    ytReady().then((ok) => {
+      if (tiles.get(ch) !== t) return;
+      if (!ok) return failTile(ch, t, box, "YouTube の埋め込みを読み込めませんでした");
+      const params = new URLSearchParams({ autoplay: "1", mute: "1", enablejsapi: "1", playsinline: "1", rel: "0" });
+      if (/^https?:$/.test(location.protocol)) params.set("origin", location.origin);
+      const id = ytId(ch);
+      const iframe = document.createElement("iframe");
+      iframe.src = ch.startsWith("ytc:")
+        ? `https://www.youtube.com/embed/live_stream?channel=${id}&${params}`
+        : `https://www.youtube.com/embed/${id}?${params}`;
+      iframe.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+      iframe.allowFullscreen = true;
+      iframe.title = "YouTube";
+      box.appendChild(iframe);
+
+      const updateMeta = () => {
+        try {
+          const d = p.getVideoData() || {};
+          if (d.video_id && d.video_id !== t.videoId) {
+            t.videoId = d.video_id;
+            if (chatChannel === ch) setChat(ch, true);   // ライブの動画IDがわかったらチャットを出し直す
+          }
+          if (d.author && d.author !== t.name) setName(ch, d.author);
+        } catch (_) {}
+      };
+      const p = new YT.Player(iframe, {
+        events: {
+          onReady: () => { t.ready = true; applyMuted(ch); updateMeta(); try { p.playVideo(); } catch (_) {} },
+          onStateChange: updateMeta,
+        },
+      });
+      t.api = {
+        getMuted: () => p.isMuted(),
+        setMuted: (m) => (m ? p.mute() : p.unMute()),
+        getVolume: () => p.getVolume() / 100,
+        setVolume: (v) => p.setVolume(Math.round(v * 100)),
+        pause: () => p.pauseVideo(),
+      };
+    });
+  }
+
+  function setName(ch, name) {
+    const t = tiles.get(ch); if (!t) return;
+    t.name = name;
+    t.el.querySelector(".nm").textContent = name;
+    if (ctxCh === ch) $("#ctxName").textContent = name;
+    renderChips(); renderChatSelect();
   }
 
   function applyMuted(ch) {
     const t = tiles.get(ch);
-    if (!t || !t.player || !t.ready) return;
+    if (!t || !t.api || !t.ready) return;
     try {
-      t.player.setMuted(t.muted);
-      if (!t.muted && t.player.getVolume() < 0.01) t.player.setVolume(t.volume || 0.5);
+      t.api.setMuted(t.muted);
+      if (!t.muted && t.api.getVolume() < 0.01) t.api.setVolume(t.volume || 0.5);
     } catch (_) {}
   }
 
   function setVolume(ch, v) {
     const t = tiles.get(ch); if (!t) return;
     t.volume = v; t.touched = Date.now();
-    if (t.player && t.ready) { try { t.player.setVolume(v); } catch (_) {} }
+    if (t.api && t.ready) { try { t.api.setVolume(v); } catch (_) {} }
     // スライダーを動かしたらミュート解除、0 にしたらミュート（Discord と同じ挙動）
     if (v > 0 && t.muted) setMuted(ch, false);
     else if (v === 0 && !t.muted) setMuted(ch, true);
@@ -344,16 +475,17 @@
     $("#ctxMuteBox").classList.toggle("on", t.muted);
     $("#ctxMuteBox").textContent = t.muted ? "✓" : "";
     $("#ctxFocus").textContent = focused === ctxCh ? "等分割に戻す" : "大画面で表示";
+    $("#ctxOpen").textContent = (isYT(ctxCh) ? "YouTube" : "Twitch") + " で開く ↗";
   }
 
   function openCtx(ch, x, y) {
     const t = tiles.get(ch); if (!t) return;
     ctxCh = ch;
-    // Twitch プレイヤー側のコントロールで変更された値も拾う
-    if (t.player && t.ready) {
-      try { t.volume = t.player.getVolume(); t.muted = t.player.getMuted(); updateTileUI(ch); } catch (_) {}
+    // プレイヤー側のコントロールで変更された値も拾う
+    if (t.api && t.ready) {
+      try { t.volume = t.api.getVolume(); t.muted = t.api.getMuted(); updateTileUI(ch); } catch (_) {}
     }
-    $("#ctxName").textContent = ch;
+    $("#ctxName").textContent = nameOf(ch);
     syncCtx();
     ctx.classList.add("open");
     const r = ctx.getBoundingClientRect();
@@ -374,7 +506,7 @@
   };
   $("#ctxFocus").onclick = () => { const ch = ctxCh; closeCtx(); setFocus(focused === ch ? null : ch); };
   $("#ctxFull").onclick = () => { const ch = ctxCh; closeCtx(); if (focused !== ch) setFocus(ch); toggleFullscreen(tiles.get(ch).el); };
-  $("#ctxOpen").onclick = () => { window.open("https://www.twitch.tv/" + ctxCh, "_blank", "noopener"); closeCtx(); };
+  $("#ctxOpen").onclick = () => { window.open(watchUrl(ctxCh), "_blank", "noopener"); closeCtx(); };
   $("#ctxRemove").onclick = () => { const ch = ctxCh; closeCtx(); removeChannel(ch); };
 
   document.addEventListener("pointerdown", (e) => { if (ctxCh && !ctx.contains(e.target)) closeCtx(); }, true);
@@ -387,7 +519,7 @@
     else (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
   }
 
-  // auto = true は大画面切り替えによる自動変更。手動の変更は「大画面をやめたときに戻す値」にも反映する
+  // ---------- mute ----------
   // 大画面にする直前のミュート状態（大画面をやめたときに戻す）
   let preFocusMute = null;
   function rememberManual(ch, muted) {
@@ -395,6 +527,7 @@
     if (preFocusMute && preFocusMute.has(ch) && ch !== focused) preFocusMute.set(ch, muted);
   }
 
+  // auto = true は大画面切り替えによる自動変更
   function setMuted(ch, muted, auto = false) {
     const t = tiles.get(ch); if (!t) return;
     if (!auto) rememberManual(ch, muted);
@@ -414,15 +547,15 @@
       : "クリックで大画面 ／ ダブルクリックで全画面";
   }
 
-  // Twitch プレイヤー内のボタンでミュート/音量を変えた場合も枠とラベルを追従させる
+  // プレイヤー内のボタンでミュート/音量を変えた場合も枠とラベルを追従させる
   setInterval(() => {
     for (const [ch, t] of tiles) {
       // こちらで変更した直後はプレイヤー側の値がまだ古いことがあるので少し待つ
-      if (!t.player || !t.ready || Date.now() - (t.touched || 0) < 2000) continue;
+      if (!t.api || !t.ready || Date.now() - (t.touched || 0) < 2000) continue;
       try {
-        const m = t.player.getMuted(), v = t.player.getVolume();
+        const m = t.api.getMuted(), v = t.api.getVolume();
         if (m !== t.muted || Math.abs(v - t.volume) > 0.005) {
-          if (m !== t.muted) rememberManual(ch, m);   // Twitch 側のボタンで変えた場合も手動扱い
+          if (m !== t.muted) rememberManual(ch, m);   // プレイヤー側のボタンで変えた場合も手動扱い
           t.muted = m; t.volume = v; updateTileUI(ch);
           if (ctxCh === ch) syncCtx();
         }
@@ -443,7 +576,7 @@
 
   function removeChannel(ch) {
     const t = tiles.get(ch); if (!t) return;
-    try { t.player && t.player.pause(); } catch (_) {}
+    try { t.api && t.api.pause(); } catch (_) {}
     t.el.remove(); tiles.delete(ch);
     channels = channels.filter((c) => c !== ch);
     const wasFocused = focused === ch;
@@ -451,7 +584,6 @@
     if (wasFocused) setFocus(null);   // 大画面の配信を閉じたら、元のミュート状態に戻してグリッドへ
     refresh(); save();
   }
-
 
   function setFocus(ch) {
     const next = ch && channels.includes(ch) ? ch : null;
@@ -539,9 +671,10 @@
     chips.innerHTML = "";
     channels.forEach((ch, i) => {
       const d = document.createElement("div");
-      d.className = "chip" + (focused === ch ? " focused" : "");
-      d.innerHTML = `<span title="${i < 9 ? "キー " + (i + 1) : ""}"></span><button title="削除">✕</button>`;
-      d.querySelector("span").textContent = ch;
+      d.className = "chip " + (isYT(ch) ? "pf-youtube" : "pf-twitch") + (focused === ch ? " focused" : "");
+      d.innerHTML = `<i class="pf"></i><span></span><button title="削除">✕</button>`;
+      d.querySelector("span").textContent = nameOf(ch);
+      d.querySelector("span").title = i < 9 ? "キー " + (i + 1) : "";
       d.querySelector("span").onclick = () => setFocus(focused === ch ? null : ch);
       d.querySelector("button").onclick = () => removeChannel(ch);
       chips.appendChild(d);
@@ -550,16 +683,38 @@
 
   function renderChatSelect() {
     const sel = $("#chatSel");
-    sel.innerHTML = channels.map((c) => `<option value="${c}">${c} のチャット</option>`).join("");
+    sel.innerHTML = "";
+    for (const c of channels) {
+      const o = document.createElement("option");
+      o.value = c;
+      o.textContent = `${isYT(c) ? "[YT]" : "[Twitch]"} ${nameOf(c)} のチャット`;
+      sel.appendChild(o);
+    }
     if (chatChannel) sel.value = chatChannel;
   }
 
-  function setChat(ch) {
-    if (!HOST || !ch) { $("#chatFrame").removeAttribute("src"); chatChannel = null; return; }
-    if (chatChannel === ch) return;
+  function chatSrc(ch) {
+    const host = encodeURIComponent(HOST);
+    if (!isYT(ch)) return `https://www.twitch.tv/embed/${ch}/chat?parent=${host}&darkpopout`;
+    const vid = ch.startsWith("yt:") ? ytId(ch) : tiles.get(ch)?.videoId;
+    if (!vid) return null;
+    const dark = "&dark_theme=1";
+    return `https://www.youtube.com/live_chat?v=${vid}&embed_domain=${host}${dark}`;
+  }
+
+  function setChat(ch, force = false) {
+    const frame = $("#chatFrame");
+    if (!HOST || !ch) { frame.removeAttribute("src"); frame.removeAttribute("srcdoc"); chatChannel = null; return; }
+    if (chatChannel === ch && !force) return;
     chatChannel = ch;
     $("#chatSel").value = ch;
-    $("#chatFrame").src = `https://www.twitch.tv/embed/${ch}/chat?parent=${encodeURIComponent(HOST)}&darkpopout`;
+    const src = chatSrc(ch);
+    if (src) { frame.removeAttribute("srcdoc"); frame.src = src; }
+    else {
+      frame.removeAttribute("src");
+      frame.srcdoc = `<body style="background:#2b2d31;color:#949ba4;font:13px sans-serif;display:grid;place-items:center;height:90vh;text-align:center">
+        配信の読み込み後にチャットを表示します</body>`;
+    }
   }
 
   function toggleChat(force) {
@@ -582,10 +737,11 @@
   // ---------- events ----------
   $("#addForm").addEventListener("submit", (e) => {
     e.preventDefault();
-    const list = parseChannels($("#chInput").value);
-    if (!list.length) { toast("チャンネル名が正しくありません"); return; }
-    const n = addChannels(list);
-    toast(n ? `${n} 件追加しました` : "すでに追加済みです");
+    const { ok, errors } = parseInput($("#chInput").value);
+    const n = addChannels(ok);
+    if (errors.includes("handle")) toast((n ? `${n} 件追加しました。` : "") + "YouTube の @ハンドル には対応していません。配信ページの URL（watch?v=… など）を貼ってください");
+    else if (!ok.length) toast("チャンネル名 / URL が正しくありません");
+    else toast(n ? `${n} 件追加しました` : "すでに追加済みです");
     $("#chInput").value = "";
   });
   $("#gridBtn").onclick = () => setFocus(null);
