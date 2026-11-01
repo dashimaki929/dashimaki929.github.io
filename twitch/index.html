@@ -67,11 +67,8 @@
   .tile.audible .label { background: rgba(35,165,90,.85); }
   .tile .player, .tile .player iframe { position: absolute; inset: 0; width: 100% !important; height: 100% !important; border: 0; }
   .tile .catcher { position: absolute; inset: 0; cursor: pointer; z-index: 3; }
-  /* 大画面では下部（Twitch の再生・音量・画質バー）だけプレイヤーを直接操作できるように空ける */
-  .tile.main .catcher { bottom: 56px; }
-  /* Twitch は「プレイヤーの上に何か重なっている」と自動再生しないため、
-     再生が始まるまではオーバーレイを一切出さない */
-  .tile.booting .catcher, .tile.booting .label, .tile.booting .tools { display: none; }
+  /* 下部（再生・音量・画質バー）はプレイヤーを直接操作できるように空ける（小さいサムネイル以外） */
+  .tile:not(.small) .catcher { bottom: 56px; }
   .tile:fullscreen { border-radius: 0; box-shadow: none; }
   .tile:fullscreen .catcher { cursor: default; }
   .tile:not(.main):not(.audible):hover { box-shadow: 0 0 0 2px rgba(255,255,255,.35); }
@@ -196,6 +193,15 @@
   const HOST = location.hostname;            // Twitch 埋め込みの parent / YouTube チャットの embed_domain に必須
   const ASPECT = 16 / 9;
   const STORE_KEY = "multi-twitch:channels"; // 以前の保存データをそのまま引き継ぐためキー名は据え置き
+  const VOL_KEY = "multi-twitch:volumes";    // 配信ごとの音量（次回も同じ音量で開く）
+  const DEFAULT_VOLUME = 0.5;
+  let volStore = {};
+  try { volStore = JSON.parse(localStorage.getItem(VOL_KEY) || "{}") || {}; } catch (_) {}
+  function rememberVolume(ch, v) {
+    if (!(v > 0)) return;   // 0 はミュート扱いなので保存しない
+    volStore[ch] = Math.round(v * 100) / 100;
+    try { localStorage.setItem(VOL_KEY, JSON.stringify(volStore)); } catch (_) {}
+  }
 
   const $ = (s) => document.querySelector(s);
   const stage = $("#stage"), chips = $("#chips");
@@ -312,7 +318,7 @@
   // ---------- tiles ----------
   function createTile(ch) {
     const el = document.createElement("div");
-    el.className = "tile booting " + (isYT(ch) ? "pf-youtube" : "pf-twitch");
+    el.className = "tile " + (isYT(ch) ? "pf-youtube" : "pf-twitch");
     el.innerHTML = `
       <div class="player"></div>
       <div class="catcher" title="クリックで大画面"></div>
@@ -322,7 +328,7 @@
         <button class="focus" title="大画面 / 戻す">⛶</button>
         <button class="close" title="閉じる">✕</button>
       </div>`;
-    const t = { el, api: null, muted: true, ready: false, volume: 0.5, name: null, videoId: null };
+    const t = { el, api: null, muted: true, ready: false, volume: volStore[ch] ?? DEFAULT_VOLUME, name: null, videoId: null };
     tiles.set(ch, t);
     el.querySelector(".nm").textContent = nameOf(ch);
 
@@ -358,7 +364,6 @@
   }
 
   function failTile(ch, t, box, msg) {
-    t.el.classList.remove("booting");
     const d = document.createElement("div");
     d.className = "placeholder";
     d.textContent = `${nameOf(ch)}\n（${msg}）`;
@@ -383,18 +388,12 @@
         setVolume: (v) => p.setVolume(v),
         pause: () => p.pause(),
       };
-      p.addEventListener(Twitch.Player.READY, () => { t.ready = true; applyMuted(ch); });
-      // Twitch は「プレイヤーの上に何か重なっている」と自動再生しないため、
-      // 再生が始まる（またはオフラインと判明する）までオーバーレイを出さない
-      const booted = () => t.el.classList.remove("booting");
-      p.addEventListener(Twitch.Player.PLAYING, booted);
-      p.addEventListener(Twitch.Player.OFFLINE, booted);
+      p.addEventListener(Twitch.Player.READY, () => onPlayerReady(ch));
     });
   }
 
   // --- YouTube ---
   function mountYouTube(ch, t, box) {
-    t.el.classList.remove("booting");   // YouTube はオーバーレイがあっても自動再生される
     ytReady().then((ok) => {
       if (tiles.get(ch) !== t) return;
       if (!ok) return failTile(ch, t, box, "YouTube の埋め込みを読み込めませんでした");
@@ -422,7 +421,7 @@
       };
       const p = new YT.Player(iframe, {
         events: {
-          onReady: () => { t.ready = true; applyMuted(ch); updateMeta(); try { p.playVideo(); } catch (_) {} },
+          onReady: () => { onPlayerReady(ch); updateMeta(); try { p.playVideo(); } catch (_) {} },
           onStateChange: updateMeta,
         },
       });
@@ -444,6 +443,14 @@
     renderChips(); renderChatSelect();
   }
 
+  // プレイヤーの準備ができたら、保存してある音量（なければ 50%）とミュート状態を反映
+  function onPlayerReady(ch) {
+    const t = tiles.get(ch); if (!t || !t.api) return;
+    t.ready = true; t.touched = Date.now();
+    try { t.api.setVolume(t.volume > 0 ? t.volume : DEFAULT_VOLUME); } catch (_) {}
+    applyMuted(ch);
+  }
+
   function applyMuted(ch) {
     const t = tiles.get(ch);
     if (!t || !t.api || !t.ready) return;
@@ -455,7 +462,7 @@
 
   function setVolume(ch, v) {
     const t = tiles.get(ch); if (!t) return;
-    t.volume = v; t.touched = Date.now();
+    t.volume = v; t.touched = Date.now(); rememberVolume(ch, v);
     if (t.api && t.ready) { try { t.api.setVolume(v); } catch (_) {} }
     // スライダーを動かしたらミュート解除、0 にしたらミュート（Discord と同じ挙動）
     if (v > 0 && t.muted) setMuted(ch, false);
@@ -556,6 +563,7 @@
         const m = t.api.getMuted(), v = t.api.getVolume();
         if (m !== t.muted || Math.abs(v - t.volume) > 0.005) {
           if (m !== t.muted) rememberManual(ch, m);   // プレイヤー側のボタンで変えた場合も手動扱い
+          if (Math.abs(v - t.volume) > 0.005) rememberVolume(ch, v);   // プレイヤー側で変えた音量も覚える
           t.muted = m; t.volume = v; updateTileUI(ch);
           if (ctxCh === ch) syncCtx();
         }
