@@ -87,10 +87,10 @@
   .tile.small .label { font-size: 11px; padding: 2px 6px; left: 4px; bottom: 4px; }
   .tile.small .tools { top: 4px; right: 4px; }
   .tile.small .tools button { width: 24px; height: 24px; font-size: 12px; }
-  /* YouTube はシークバーと操作ボタンが下部にあるので、下 110px はプレイヤーを直接操作できるように空ける。
-     （上部のメニューは表示しても操作しづらいので空けない）ラベルは下の操作部分と重ならないよう左上に置く */
-  .tile.pf-youtube:not(.small) .catcher { bottom: 110px; }
-  .tile.pf-youtube:not(.small) .label { top: 8px; bottom: auto; }
+  /* YouTube：大画面のときだけ下 110px（シークバーと操作ボタン）をプレイヤーで直接操作できるように空ける。
+     グリッド表示・サムネイルでは誤クリックで止まらないよう全面を覆う */
+  .tile.pf-youtube:not(.main) .catcher { bottom: 0; }
+  .tile.pf-youtube.main .catcher { bottom: 110px; }
   .placeholder { position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
     color: var(--muted); font-size: 13px; padding: 12px; background: linear-gradient(135deg, #2b2d31, #232428); }
 
