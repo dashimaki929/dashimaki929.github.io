@@ -387,8 +387,17 @@
     else (el.requestFullscreen || el.webkitRequestFullscreen)?.call(el);
   }
 
-  function setMuted(ch, muted) {
+  // auto = true は大画面切り替えによる自動変更。手動の変更は「大画面をやめたときに戻す値」にも反映する
+  // 大画面にする直前のミュート状態（大画面をやめたときに戻す）
+  let preFocusMute = null;
+  function rememberManual(ch, muted) {
+    // 大画面中に小さい配信のミュートを手動で変えたら、その設定を優先して残す
+    if (preFocusMute && preFocusMute.has(ch) && ch !== focused) preFocusMute.set(ch, muted);
+  }
+
+  function setMuted(ch, muted, auto = false) {
     const t = tiles.get(ch); if (!t) return;
+    if (!auto) rememberManual(ch, muted);
     if (!muted && t.volume < 0.01) t.volume = 0.5;   // 音量 0 のままミュート解除しても無音にならないように
     t.muted = muted; t.touched = Date.now(); applyMuted(ch); updateTileUI(ch);
   }
@@ -413,6 +422,7 @@
       try {
         const m = t.player.getMuted(), v = t.player.getVolume();
         if (m !== t.muted || Math.abs(v - t.volume) > 0.005) {
+          if (m !== t.muted) rememberManual(ch, m);   // Twitch 側のボタンで変えた場合も手動扱い
           t.muted = m; t.volume = v; updateTileUI(ch);
           if (ctxCh === ch) syncCtx();
         }
@@ -442,8 +452,6 @@
     refresh(); save();
   }
 
-  // 大画面にする直前のミュート状態（大画面をやめたときに戻す）
-  let preFocusMute = null;
 
   function setFocus(ch) {
     const next = ch && channels.includes(ch) ? ch : null;
@@ -452,12 +460,12 @@
     focused = next;
     if (focused) {
       // 大画面の配信だけ音を出し、他はミュート
-      for (const c of channels) setMuted(c, c !== focused);
+      for (const c of channels) setMuted(c, c !== focused, true);
       if (document.body.classList.contains("chat-open")) setChat(focused);
     } else if (preFocusMute) {
       // 大画面をやめたら元のミュート状態に戻す
-      for (const [c, m] of preFocusMute) if (tiles.has(c)) setMuted(c, m);
-      preFocusMute = null;
+      const restore = preFocusMute; preFocusMute = null;
+      for (const [c, m] of restore) if (tiles.has(c)) setMuted(c, m, true);
     }
     channels.forEach(updateTileUI);
     refresh();
