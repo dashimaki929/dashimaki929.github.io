@@ -90,6 +90,24 @@
   .placeholder { position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
     color: var(--muted); font-size: 13px; padding: 12px; background: linear-gradient(135deg, #2b2d31, #232428); }
 
+  /* ---------- context menu (Discord 風) ---------- */
+  #ctx { position: fixed; z-index: 100; display: none; min-width: 220px; padding: 6px;
+    background: #111214; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.5); font-size: 14px; user-select: none; }
+  #ctx.open { display: block; }
+  #ctx .hd { padding: 6px 8px 4px; font-size: 12px; font-weight: 700; color: var(--muted); }
+  #ctx .vol { padding: 4px 8px 10px; }
+  #ctx .vol-top { display: flex; justify-content: space-between; margin-bottom: 6px; }
+  #ctx .vol-top b { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 500; }
+  #ctx input[type=range] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+  #ctx .sep { height: 1px; background: #2e2f34; margin: 4px 6px; }
+  #ctx .it { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%;
+    padding: 7px 8px; border: 0; background: transparent; border-radius: 4px; text-align: left; }
+  #ctx .it:hover { background: var(--accent); color: #fff; }
+  #ctx .it.danger { color: var(--red); }
+  #ctx .it.danger:hover { background: var(--red); color: #fff; }
+  #ctx .box { width: 18px; height: 18px; border-radius: 4px; border: 2px solid #80848e; display: grid; place-items: center; font-size: 12px; }
+  #ctx .box.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
   /* ---------- empty / warn ---------- */
   #empty { position: absolute; inset: 0; display: none; place-items: center; text-align: center; color: var(--muted); }
   #empty h2 { color: var(--text); margin: 0 0 8px; }
@@ -117,6 +135,7 @@
     <button class="btn primary" type="submit">追加</button>
   </form>
   <div id="chips"></div>
+  <button class="btn" id="playAllBtn" title="止まっている配信をすべて再生 (P)">▶ すべて再生</button>
   <button class="btn" id="gridBtn" title="グリッドに戻る (Esc)">▦</button>
   <button class="btn" id="chatBtn" title="チャット表示 (C)">💬</button>
   <button class="btn" id="shareBtn" title="この構成のURLをコピー">🔗</button>
@@ -142,6 +161,21 @@
     <iframe id="chatFrame" title="Twitch chat"></iframe>
   </aside>
 </main>
+
+<div id="ctx" role="menu">
+  <div class="hd" id="ctxName"></div>
+  <div class="vol">
+    <div class="vol-top"><span>音量</span><b id="ctxVolVal">50%</b></div>
+    <input type="range" id="ctxVol" min="0" max="100" step="1">
+  </div>
+  <button class="it" id="ctxMute"><span>ミュート</span><span class="box" id="ctxMuteBox"></span></button>
+  <div class="sep"></div>
+  <button class="it" id="ctxFocus"></button>
+  <button class="it" id="ctxFull">全画面で表示</button>
+  <button class="it" id="ctxOpen">Twitch で開く ↗</button>
+  <div class="sep"></div>
+  <button class="it danger" id="ctxRemove">この配信を閉じる</button>
+</div>
 
 <div id="warn"></div>
 <div id="toast"></div>
@@ -222,7 +256,7 @@
         <button class="close" title="閉じる">✕</button>
       </div>`;
     el.querySelector(".nm").textContent = ch;
-    const t = { el, player: null, muted: true, ready: false };
+    const t = { el, player: null, muted: true, ready: false, volume: 0.5 };
     tiles.set(ch, t);
 
     // クリック：小さい配信 → 大画面に / 大画面の配信 → 等分割に戻す
@@ -234,6 +268,11 @@
       if (document.fullscreenElement) return;   // 全画面中のシングルクリックは無視
       clearTimeout(clickTimer);
       clickTimer = setTimeout(() => { clickTimer = null; setFocus(null); }, 250);
+    });
+    catcher.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      clearTimeout(clickTimer); clickTimer = null;
+      openCtx(ch, e.clientX, e.clientY);
     });
     catcher.addEventListener("dblclick", () => {
       clearTimeout(clickTimer); clickTimer = null;
@@ -266,8 +305,15 @@
       });
       // 再生が始まった（またはオフラインと判明した）らオーバーレイを有効化
       const booted = () => el.classList.remove("booting");
-      t.player.addEventListener(Twitch.Player.PLAYING, booted);
-      t.player.addEventListener(Twitch.Player.OFFLINE, booted);
+      t.player.addEventListener(Twitch.Player.PLAYING, () => { t.paused = false; booted(); updatePlayAll(); });
+      t.player.addEventListener(Twitch.Player.PLAY, () => { t.paused = false; updatePlayAll(); });
+      t.player.addEventListener(Twitch.Player.PAUSE, () => { t.paused = true; updatePlayAll(); });
+      t.player.addEventListener(Twitch.Player.OFFLINE, () => { t.offline = true; booted(); updatePlayAll(); });
+      t.player.addEventListener(Twitch.Player.ONLINE, () => { t.offline = false; });
+      // 自動再生が止められていたら、少し待ってから API 経由で再生を試みる
+      t.player.addEventListener(Twitch.Player.READY, () => {
+        setTimeout(() => { if (isStopped(t)) playOne(t); updatePlayAll(); }, 2500);
+      });
     });
     return t;
   }
@@ -277,8 +323,86 @@
     if (!t || !t.player || !t.ready) return;
     try {
       t.player.setMuted(t.muted);
-      if (!t.muted && t.player.getVolume() < 0.05) t.player.setVolume(0.5);
+      if (!t.muted && t.player.getVolume() < 0.01) t.player.setVolume(t.volume || 0.5);
     } catch (_) {}
+  }
+
+  function setVolume(ch, v) {
+    const t = tiles.get(ch); if (!t) return;
+    t.volume = v;
+    if (t.player && t.ready) { try { t.player.setVolume(v); } catch (_) {} }
+    // スライダーを動かしたらミュート解除、0 にしたらミュート（Discord と同じ挙動）
+    if (v > 0 && t.muted) setMuted(ch, false);
+    else if (v === 0 && !t.muted) setMuted(ch, true);
+  }
+
+  // ---------- context menu ----------
+  const ctx = $("#ctx");
+  let ctxCh = null;
+
+  function syncCtx() {
+    const t = tiles.get(ctxCh); if (!t) return;
+    const pct = Math.round(t.volume * 100);
+    $("#ctxVol").value = pct;
+    $("#ctxVolVal").textContent = pct + "%";
+    $("#ctxMuteBox").classList.toggle("on", t.muted);
+    $("#ctxMuteBox").textContent = t.muted ? "✓" : "";
+    $("#ctxFocus").textContent = focused === ctxCh ? "等分割に戻す" : "大画面で表示";
+  }
+
+  function openCtx(ch, x, y) {
+    const t = tiles.get(ch); if (!t) return;
+    ctxCh = ch;
+    // Twitch プレイヤー側のコントロールで変更された値も拾う
+    if (t.player && t.ready) {
+      try { t.volume = t.player.getVolume(); t.muted = t.player.getMuted(); updateTileUI(ch); } catch (_) {}
+    }
+    $("#ctxName").textContent = ch;
+    syncCtx();
+    ctx.classList.add("open");
+    const r = ctx.getBoundingClientRect();
+    ctx.style.left = Math.min(x, innerWidth - r.width - 8) + "px";
+    ctx.style.top = Math.min(y, innerHeight - r.height - 8) + "px";
+  }
+
+  function closeCtx() { ctx.classList.remove("open"); ctxCh = null; }
+
+  $("#ctxVol").addEventListener("input", (e) => {
+    if (!ctxCh) return;
+    setVolume(ctxCh, +e.target.value / 100);
+    syncCtx();
+  });
+  $("#ctxMute").onclick = () => {
+    const t = tiles.get(ctxCh); if (!t) return;
+    setMuted(ctxCh, !t.muted); syncCtx();
+  };
+  $("#ctxFocus").onclick = () => { const ch = ctxCh; closeCtx(); setFocus(focused === ch ? null : ch); };
+  $("#ctxFull").onclick = () => { const ch = ctxCh; closeCtx(); if (focused !== ch) setFocus(ch); toggleFullscreen(tiles.get(ch).el); };
+  $("#ctxOpen").onclick = () => { window.open("https://www.twitch.tv/" + ctxCh, "_blank", "noopener"); closeCtx(); };
+  $("#ctxRemove").onclick = () => { const ch = ctxCh; closeCtx(); removeChannel(ch); };
+
+  document.addEventListener("pointerdown", (e) => { if (ctxCh && !ctx.contains(e.target)) closeCtx(); }, true);
+  document.addEventListener("contextmenu", (e) => { if (ctxCh && !e.target.closest(".catcher")) closeCtx(); });
+  window.addEventListener("blur", () => { if (ctxCh) closeCtx(); });   // iframe 内をクリックした場合
+  window.addEventListener("resize", closeCtx);
+
+  // ---------- play all ----------
+  function isStopped(t) {
+    if (!t.player || !t.ready || t.offline) return false;
+    try { return t.player.isPaused(); } catch (_) { return !!t.paused; }
+  }
+  function playOne(t) {
+    try { t.player.setMuted(t.muted); t.player.play(); } catch (_) {}
+  }
+  function playAll() {
+    let n = 0;
+    for (const t of tiles.values()) if (isStopped(t)) { playOne(t); n++; }
+    toast(n ? `${n} 件の配信を再生します` : "すべて再生中です");
+    setTimeout(updatePlayAll, 1500);
+  }
+  function updatePlayAll() {
+    const stopped = [...tiles.values()].some(isStopped);
+    $("#playAllBtn").classList.toggle("primary", stopped);
   }
 
   function toggleFullscreen(el) {
@@ -451,6 +575,7 @@
     toast(n ? `${n} 件追加しました` : "すでに追加済みです");
     $("#chInput").value = "";
   });
+  $("#playAllBtn").onclick = playAll;
   $("#gridBtn").onclick = () => setFocus(null);
   $("#chatBtn").onclick = () => toggleChat();
   $("#chatClose").onclick = () => toggleChat(false);
@@ -462,8 +587,9 @@
 
   document.addEventListener("keydown", (e) => {
     if (e.target.closest("input, select, textarea")) return;
-    if (e.key === "Escape") setFocus(null);
+    if (e.key === "Escape") { if (ctxCh) closeCtx(); else setFocus(null); }
     else if (e.key === "c" || e.key === "C") toggleChat();
+    else if (e.key === "p" || e.key === "P") playAll();
     else if (/^[1-9]$/.test(e.key)) {
       const ch = channels[+e.key - 1];
       if (ch) setFocus(focused === ch ? null : ch);
