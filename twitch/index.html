@@ -178,7 +178,8 @@
   <div class="sep"></div>
   <button class="it" id="ctxFocus"></button>
   <button class="it" id="ctxFull">全画面で表示</button>
-  <button class="it" id="ctxReload">この配信を再読み込み <span>↻</span></button>
+  <button class="it" id="ctxRefresh">最新に追いつく（再読み込み） <span>↻</span></button>
+  <button class="it" id="ctxReload">プレイヤーを作り直す <span>⟳</span></button>
   <button class="it" id="ctxOpen">開く ↗</button>
   <div class="sep"></div>
   <button class="it danger" id="ctxRemove">この配信を閉じる</button>
@@ -390,6 +391,12 @@
         getVolume: () => p.getVolume(),
         setVolume: (v) => p.setVolume(v),
         pause: () => p.pause(),
+        // iframe を作り直すと Twitch の自動再生判定に引っかかるので、同じプレイヤーのまま読み込み直す
+        refresh: () => {
+          p.pause();
+          setTimeout(() => { try { p.setChannel(ch); } catch (_) {} }, 150);
+          setTimeout(() => { try { p.play(); } catch (_) {} }, 900);
+        },
       };
       p.addEventListener(Twitch.Player.READY, () => onPlayerReady(ch));
       p.addEventListener(Twitch.Player.PLAYING, () => onPlayerPlaying(ch));
@@ -435,8 +442,26 @@
         getVolume: () => p.getVolume() / 100,
         setVolume: (v) => p.setVolume(Math.round(v * 100)),
         pause: () => p.pauseVideo(),
+        // ライブなら最新位置へ移動して再生
+        refresh: () => {
+          try {
+            const d = p.getVideoData() || {};
+            if (d.isLive !== false) p.seekTo(Math.max(0, p.getDuration()), true);
+          } catch (_) {}
+          p.playVideo();
+        },
       };
     });
+  }
+
+  // 軽い再読み込み：プレイヤーはそのままで最新のライブ位置から再生し直す
+  function refreshTile(ch) {
+    const t = tiles.get(ch); if (!t) return;
+    if (!t.api || !t.ready) { reloadTile(ch); return; }   // まだ準備できていなければ作り直す
+    try { t.api.refresh(); } catch (_) {}
+    t.touched = Date.now();
+    setTimeout(() => applyMuted(ch), 1500);   // 再生し直したあとも音量・ミュート状態を維持
+    toast(`${nameOf(ch)} を最新の位置から再生し直しました`);
   }
 
   // 止まった・遅延が溜まった配信を、タイルの位置や音量・ミュート状態はそのままでプレイヤーだけ作り直す
@@ -543,6 +568,7 @@
   };
   $("#ctxFocus").onclick = () => { const ch = ctxCh; closeCtx(); setFocus(focused === ch ? null : ch); };
   $("#ctxFull").onclick = () => { const ch = ctxCh; closeCtx(); if (focused !== ch) setFocus(ch); toggleFullscreen(tiles.get(ch).el); };
+  $("#ctxRefresh").onclick = () => { const ch = ctxCh; closeCtx(); refreshTile(ch); };
   $("#ctxReload").onclick = () => { const ch = ctxCh; closeCtx(); reloadTile(ch); };
   $("#ctxOpen").onclick = () => { window.open(watchUrl(ctxCh), "_blank", "noopener"); closeCtx(); };
   $("#ctxRemove").onclick = () => { const ch = ctxCh; closeCtx(); removeChannel(ch); };
