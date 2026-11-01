@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi Twitch Viewer</title>
+<style>
+  :root {
+    --bg: #1e1f22;
+    --bg2: #2b2d31;
+    --bg3: #313338;
+    --text: #dbdee1;
+    --muted: #949ba4;
+    --accent: #5865f2;
+    --green: #23a55a;
+    --red: #f23f43;
+    --twitch: #9146ff;
+    --gap: 8px;
+    --bar-h: 52px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--text);
+    font-family: "gg sans", "Noto Sans JP", "Hiragino Sans", "Segoe UI", system-ui, sans-serif; overflow: hidden; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+
+  /* ---------- top bar ---------- */
+  #bar { height: var(--bar-h); display: flex; align-items: center; gap: 10px; padding: 0 12px;
+    background: var(--bg); border-bottom: 1px solid #111214; }
+  .brand { font-weight: 700; white-space: nowrap; display: flex; align-items: center; gap: 6px; }
+  .brand::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--twitch); }
+  #addForm { display: flex; gap: 6px; }
+  #chInput { width: 260px; background: var(--bg3); border: 1px solid transparent; border-radius: 6px;
+    color: var(--text); padding: 7px 10px; outline: none; }
+  #chInput:focus { border-color: var(--accent); }
+  .btn { background: var(--bg3); border: 0; border-radius: 6px; padding: 7px 12px; white-space: nowrap; }
+  .btn:hover { background: #3f4147; }
+  .btn.primary { background: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #4752c4; }
+  .btn.on { background: var(--accent); color: #fff; }
+  #chips { display: flex; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; scrollbar-width: none; }
+  #chips::-webkit-scrollbar { display: none; }
+  .chip { display: flex; align-items: center; gap: 4px; background: var(--bg2); border-radius: 999px;
+    padding: 3px 4px 3px 10px; font-size: 13px; white-space: nowrap; }
+  .chip.focused { background: var(--accent); color: #fff; }
+  .chip span { cursor: pointer; }
+  .chip button { border: 0; background: transparent; width: 20px; height: 20px; border-radius: 50%;
+    line-height: 1; padding: 0; opacity: .7; }
+  .chip button:hover { background: rgba(255,255,255,.15); opacity: 1; }
+
+  /* ---------- main area ---------- */
+  #wrap { position: absolute; top: var(--bar-h); left: 0; right: 0; bottom: 0; display: flex; }
+  #stage { position: relative; flex: 1; min-width: 0; margin: var(--gap); }
+  #chat { width: 340px; display: none; flex-direction: column; background: var(--bg2); border-left: 1px solid #111214; }
+  body.chat-open #chat { display: flex; }
+  #chatHead { display: flex; align-items: center; gap: 8px; padding: 8px; border-bottom: 1px solid #111214; }
+  #chatSel { flex: 1; background: var(--bg3); color: var(--text); border: 0; border-radius: 6px; padding: 6px; }
+  #chatFrame { flex: 1; border: 0; width: 100%; }
+
+  /* ---------- tiles ---------- */
+  .tile { position: absolute; border-radius: 8px; overflow: hidden; background: var(--bg3);
+    transition: left .25s ease, top .25s ease, width .25s ease, height .25s ease;
+    box-shadow: 0 0 0 0 transparent; }
+  body.no-anim .tile { transition: none; }
+  .tile.main { box-shadow: 0 0 0 2px var(--green); z-index: 2; }
+  .tile .player, .tile .player iframe { position: absolute; inset: 0; width: 100% !important; height: 100% !important; border: 0; }
+  .tile .catcher { position: absolute; inset: 0; cursor: pointer; z-index: 3; }
+  .tile.main .catcher { display: none; }  /* 大画面ではプレイヤーを直接操作できるように */
+  .tile:not(.main):hover { box-shadow: 0 0 0 2px rgba(255,255,255,.35); }
+  .tile .label { position: absolute; left: 8px; bottom: 8px; z-index: 4; display: flex; align-items: center; gap: 6px;
+    background: rgba(0,0,0,.6); border-radius: 4px; padding: 3px 8px; font-size: 13px; font-weight: 600;
+    max-width: calc(100% - 16px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+  .tile.main .label { bottom: auto; top: 8px; }
+  .tile .label .snd { font-size: 12px; }
+  .tile .tools { position: absolute; right: 8px; top: 8px; z-index: 5; display: flex; gap: 4px;
+    opacity: 0; transition: opacity .15s; }
+  .tile:hover .tools { opacity: 1; }
+  .tile .tools button { width: 30px; height: 30px; border: 0; border-radius: 6px; background: rgba(0,0,0,.65);
+    display: grid; place-items: center; font-size: 14px; padding: 0; }
+  .tile .tools button:hover { background: rgba(0,0,0,.9); }
+  .tile .tools button.close:hover { background: var(--red); }
+  .tile.small .label { font-size: 11px; padding: 2px 6px; left: 4px; bottom: 4px; }
+  .tile.small .tools { top: 4px; right: 4px; }
+  .tile.small .tools button { width: 24px; height: 24px; font-size: 12px; }
+  .placeholder { position: absolute; inset: 0; display: grid; place-items: center; text-align: center;
+    color: var(--muted); font-size: 13px; padding: 12px; background: linear-gradient(135deg, #2b2d31, #232428); }
+
+  /* ---------- empty / warn ---------- */
+  #empty { position: absolute; inset: 0; display: none; place-items: center; text-align: center; color: var(--muted); }
+  #empty h2 { color: var(--text); margin: 0 0 8px; }
+  body.is-empty #empty { display: grid; }
+  #warn { display: none; position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 50;
+    background: var(--red); color: #fff; padding: 10px 14px; border-radius: 8px; font-size: 13px; max-width: 90vw; }
+  #toast { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%) translateY(80px); z-index: 60;
+    background: var(--bg3); padding: 8px 14px; border-radius: 8px; font-size: 13px; transition: transform .2s; }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+  kbd { background: var(--bg3); border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+
+  @media (max-width: 760px) {
+    #chInput { width: 150px; }
+    .brand span { display: none; }
+    #chat { position: absolute; right: 0; top: 0; bottom: 0; z-index: 20; width: min(340px, 90vw); }
+  }
+</style>
+</head>
+<body class="is-empty">
+
+<header id="bar">
+  <div class="brand"><span>Multi Twitch</span></div>
+  <form id="addForm" autocomplete="off">
+    <input id="chInput" placeholder="チャンネル名 / URL（カンマ区切り可）">
+    <button class="btn primary" type="submit">追加</button>
+  </form>
+  <div id="chips"></div>
+  <button class="btn" id="gridBtn" title="グリッドに戻る (Esc)">▦</button>
+  <button class="btn" id="chatBtn" title="チャット表示 (C)">💬</button>
+  <button class="btn" id="shareBtn" title="この構成のURLをコピー">🔗</button>
+</header>
+
+<main id="wrap">
+  <div id="stage">
+    <div id="empty">
+      <div>
+        <h2>配信を追加してください</h2>
+        <div>上の入力欄にチャンネル名を入れて「追加」</div>
+        <div style="margin-top:14px;font-size:13px">
+          クリックで大画面 ／ <kbd>Esc</kbd> でグリッドに戻る ／ <kbd>1</kbd>〜<kbd>9</kbd> で切替 ／ <kbd>C</kbd> でチャット
+        </div>
+      </div>
+    </div>
+  </div>
+  <aside id="chat">
+    <div id="chatHead">
+      <select id="chatSel"></select>
+      <button class="btn" id="chatClose" title="閉じる">✕</button>
+    </div>
+    <iframe id="chatFrame" title="Twitch chat"></iframe>
+  </aside>
+</main>
+
+<div id="warn"></div>
+<div id="toast"></div>
+
+<script>
+(() => {
+  "use strict";
+
+  const HOST = location.hostname;            // Twitch 埋め込みの parent に必須
+  const ASPECT = 16 / 9;
+  const STORE_KEY = "multi-twitch:channels";
+
+  const $ = (s) => document.querySelector(s);
+  const stage = $("#stage"), chips = $("#chips");
+
+  /** state */
+  let channels = [];          // 表示順
+  let focused = null;         // 大画面中のチャンネル
+  let chatChannel = null;
+  const tiles = new Map();    // ch -> { el, player, muted, ready }
+
+  // ---------- Twitch embed script (非同期ロード) ----------
+  const twitchReady = new Promise((resolve) => {
+    if (!HOST) return resolve(false);
+    const s = document.createElement("script");
+    s.src = "https://player.twitch.tv/js/embed/v1.js";
+    s.onload = () => resolve(!!window.Twitch);
+    s.onerror = () => resolve(false);
+    document.head.appendChild(s);
+  });
+
+  if (!HOST) {
+    showWarn("ファイルを直接開いている（file://）ため Twitch の埋め込みは動きません。GitHub Pages か localhost で開いてください。");
+  }
+
+  // ---------- helpers ----------
+  function parseChannels(text) {
+    return text.split(/[\s,、]+/).map((t) => {
+      t = t.trim();
+      const m = t.match(/twitch\.tv\/([A-Za-z0-9_]+)/i);
+      if (m) t = m[1];
+      return t.replace(/^@/, "").toLowerCase();
+    }).filter((t) => /^[a-z0-9_]{2,25}$/.test(t));
+  }
+
+  function showWarn(msg) { const w = $("#warn"); w.textContent = msg; w.style.display = "block"; }
+  let toastTimer;
+  function toast(msg) {
+    const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+    clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 1800);
+  }
+
+  function save() {
+    const url = new URL(location.href);
+    if (channels.length) url.searchParams.set("c", channels.join(","));
+    else url.searchParams.delete("c");
+    history.replaceState(null, "", url);
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(channels)); } catch (_) {}
+  }
+
+  function load() {
+    const q = new URLSearchParams(location.search).get("c");
+    if (q) return parseChannels(q);
+    try { return JSON.parse(localStorage.getItem(STORE_KEY) || "[]"); } catch (_) { return []; }
+  }
+
+  // ---------- tiles ----------
+  function createTile(ch) {
+    const el = document.createElement("div");
+    el.className = "tile";
+    el.innerHTML = `
+      <div class="player"></div>
+      <div class="catcher" title="クリックで大画面"></div>
+      <div class="label"><span class="snd"></span><span class="nm"></span></div>
+      <div class="tools">
+        <button class="mute" title="ミュート切替">🔇</button>
+        <button class="focus" title="大画面 / 戻す">⛶</button>
+        <button class="close" title="閉じる">✕</button>
+      </div>`;
+    el.querySelector(".nm").textContent = ch;
+    const t = { el, player: null, muted: true, ready: false };
+    tiles.set(ch, t);
+
+    el.querySelector(".catcher").addEventListener("click", () => setFocus(ch));
+    el.querySelector(".focus").addEventListener("click", (e) => { e.stopPropagation(); setFocus(focused === ch ? null : ch); });
+    el.querySelector(".mute").addEventListener("click", (e) => { e.stopPropagation(); setMuted(ch, !t.muted); });
+    el.querySelector(".close").addEventListener("click", (e) => { e.stopPropagation(); removeChannel(ch); });
+
+    stage.appendChild(el);
+    updateTileUI(ch);
+
+    twitchReady.then((ok) => {
+      if (!tiles.has(ch)) return;
+      const box = el.querySelector(".player");
+      if (!ok) {
+        box.innerHTML = `<div class="placeholder">${ch}<br>（埋め込みを読み込めませんでした）</div>`;
+        return;
+      }
+      box.id = "p-" + ch + "-" + Math.random().toString(36).slice(2, 7);
+      t.player = new Twitch.Player(box.id, {
+        channel: ch, parent: [HOST], width: "100%", height: "100%",
+        autoplay: true, muted: true,
+      });
+      t.player.addEventListener(Twitch.Player.READY, () => {
+        t.ready = true;
+        applyMuted(ch);
+      });
+    });
+    return t;
+  }
+
+  function applyMuted(ch) {
+    const t = tiles.get(ch);
+    if (!t || !t.player || !t.ready) return;
+    try {
+      t.player.setMuted(t.muted);
+      if (!t.muted && t.player.getVolume() < 0.05) t.player.setVolume(0.5);
+    } catch (_) {}
+  }
+
+  function setMuted(ch, muted) {
+    const t = tiles.get(ch); if (!t) return;
+    t.muted = muted; applyMuted(ch); updateTileUI(ch);
+  }
+
+  function updateTileUI(ch) {
+    const t = tiles.get(ch); if (!t) return;
+    t.el.querySelector(".snd").textContent = t.muted ? "🔇" : "🔊";
+    t.el.querySelector(".mute").textContent = t.muted ? "🔇" : "🔊";
+    t.el.querySelector(".focus").textContent = focused === ch ? "▦" : "⛶";
+    t.el.classList.toggle("main", focused === ch);
+  }
+
+  // ---------- channel ops ----------
+  function addChannels(list) {
+    let added = 0;
+    for (const ch of list) {
+      if (channels.includes(ch)) continue;
+      channels.push(ch); createTile(ch); added++;
+    }
+    if (added) { refresh(); save(); }
+    return added;
+  }
+
+  function removeChannel(ch) {
+    const t = tiles.get(ch); if (!t) return;
+    try { t.player && t.player.pause(); } catch (_) {}
+    t.el.remove(); tiles.delete(ch);
+    channels = channels.filter((c) => c !== ch);
+    if (focused === ch) focused = null;
+    if (chatChannel === ch) chatChannel = null;
+    refresh(); save();
+  }
+
+  function setFocus(ch) {
+    focused = ch && channels.includes(ch) ? ch : null;
+    if (focused) {
+      // 大画面の配信だけ音を出し、他はミュート（Discord 的な挙動）
+      for (const c of channels) setMuted(c, c !== focused);
+      if (document.body.classList.contains("chat-open")) setChat(focused);
+    }
+    channels.forEach(updateTileUI);
+    refresh();
+  }
+
+  // ---------- layout ----------
+  function fitGrid(n, W, H, g) {
+    let best = null;
+    for (let cols = 1; cols <= n; cols++) {
+      const rows = Math.ceil(n / cols);
+      let w = (W - g * (cols - 1)) / cols, h = w / ASPECT;
+      const maxH = (H - g * (rows - 1)) / rows;
+      if (h > maxH) { h = maxH; w = h * ASPECT; }
+      if (!best || w > best.w + 0.5) best = { cols, rows, w, h };
+    }
+    return best;
+  }
+
+  function computeRects() {
+    const W = stage.clientWidth, H = stage.clientHeight, g = 8;
+    const n = channels.length, rects = new Map();
+    if (!n) return rects;
+
+    if (!focused) {
+      // 均等割りグリッド（最終行は中央寄せ）
+      const { cols, rows, w, h } = fitGrid(n, W, H, g);
+      const y0 = (H - (rows * h + (rows - 1) * g)) / 2;
+      channels.forEach((ch, i) => {
+        const r = Math.floor(i / cols), c = i % cols;
+        const inRow = r < rows - 1 ? cols : n - cols * (rows - 1);
+        const x0 = (W - (inRow * w + (inRow - 1) * g)) / 2;
+        rects.set(ch, { x: x0 + c * (w + g), y: y0 + r * (h + g), w, h, small: w < 260 });
+      });
+      return rects;
+    }
+
+    // フォーカス：上に大画面、下に他の配信を小さく並べる
+    const others = channels.filter((c) => c !== focused);
+    let th = 0, tw = 0;
+    if (others.length) {
+      th = Math.max(70, Math.min(170, H * 0.2));
+      tw = th * ASPECT;
+      const need = others.length * tw + (others.length - 1) * g;
+      if (need > W) { tw = (W - (others.length - 1) * g) / others.length; th = tw / ASPECT; }
+    }
+    const mainH = others.length ? H - th - g : H;
+    let mw = W, mh = mw / ASPECT;
+    if (mh > mainH) { mh = mainH; mw = mh * ASPECT; }
+    // 大画面＋サムネ列をまとめて縦中央に
+    const blockH = mh + (others.length ? g + th : 0);
+    const top = Math.max(0, (H - blockH) / 2);
+    rects.set(focused, { x: (W - mw) / 2, y: top, w: mw, h: mh, small: false });
+
+    const rowW = others.length * tw + (others.length - 1) * g;
+    const sx = (W - rowW) / 2, sy = top + mh + g;
+    others.forEach((ch, i) => rects.set(ch, { x: sx + i * (tw + g), y: sy, w: tw, h: th, small: true }));
+    return rects;
+  }
+
+  function layout() {
+    const rects = computeRects();
+    for (const [ch, r] of rects) {
+      const el = tiles.get(ch).el, s = el.style;
+      s.left = r.x + "px"; s.top = r.y + "px"; s.width = r.w + "px"; s.height = r.h + "px";
+      el.classList.toggle("small", r.small);
+    }
+  }
+
+  // ---------- chips / chat ----------
+  function renderChips() {
+    chips.innerHTML = "";
+    channels.forEach((ch, i) => {
+      const d = document.createElement("div");
+      d.className = "chip" + (focused === ch ? " focused" : "");
+      d.innerHTML = `<span title="${i < 9 ? "キー " + (i + 1) : ""}"></span><button title="削除">✕</button>`;
+      d.querySelector("span").textContent = ch;
+      d.querySelector("span").onclick = () => setFocus(focused === ch ? null : ch);
+      d.querySelector("button").onclick = () => removeChannel(ch);
+      chips.appendChild(d);
+    });
+  }
+
+  function renderChatSelect() {
+    const sel = $("#chatSel");
+    sel.innerHTML = channels.map((c) => `<option value="${c}">${c} のチャット</option>`).join("");
+    if (chatChannel) sel.value = chatChannel;
+  }
+
+  function setChat(ch) {
+    if (!HOST || !ch) { $("#chatFrame").removeAttribute("src"); chatChannel = null; return; }
+    if (chatChannel === ch) return;
+    chatChannel = ch;
+    $("#chatSel").value = ch;
+    $("#chatFrame").src = `https://www.twitch.tv/embed/${ch}/chat?parent=${encodeURIComponent(HOST)}&darkpopout`;
+  }
+
+  function toggleChat(force) {
+    const open = force ?? !document.body.classList.contains("chat-open");
+    document.body.classList.toggle("chat-open", open);
+    $("#chatBtn").classList.toggle("on", open);
+    if (open) setChat(chatChannel && channels.includes(chatChannel) ? chatChannel : (focused || channels[0]));
+    requestAnimationFrame(layout);
+  }
+
+  function refresh() {
+    document.body.classList.toggle("is-empty", channels.length === 0);
+    $("#gridBtn").style.display = focused ? "" : "none";
+    renderChips(); renderChatSelect();
+    if (document.body.classList.contains("chat-open") && !channels.includes(chatChannel)) setChat(focused || channels[0]);
+    layout();
+  }
+
+  // ---------- events ----------
+  $("#addForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const list = parseChannels($("#chInput").value);
+    if (!list.length) { toast("チャンネル名が正しくありません"); return; }
+    const n = addChannels(list);
+    toast(n ? `${n} 件追加しました` : "すでに追加済みです");
+    $("#chInput").value = "";
+  });
+  $("#gridBtn").onclick = () => setFocus(null);
+  $("#chatBtn").onclick = () => toggleChat();
+  $("#chatClose").onclick = () => toggleChat(false);
+  $("#chatSel").onchange = (e) => setChat(e.target.value);
+  $("#shareBtn").onclick = async () => {
+    try { await navigator.clipboard.writeText(location.href); toast("URL をコピーしました"); }
+    catch (_) { prompt("この URL を共有してください", location.href); }
+  };
+
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest("input, select, textarea")) return;
+    if (e.key === "Escape") setFocus(null);
+    else if (e.key === "c" || e.key === "C") toggleChat();
+    else if (/^[1-9]$/.test(e.key)) {
+      const ch = channels[+e.key - 1];
+      if (ch) setFocus(focused === ch ? null : ch);
+    }
+  });
+
+  // ウィンドウサイズ変更時はアニメーションなしで再配置
+  let resizeTimer;
+  new ResizeObserver(() => {
+    document.body.classList.add("no-anim");
+    layout();
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => document.body.classList.remove("no-anim"), 150);
+  }).observe(stage);
+
+  // ---------- init ----------
+  document.body.classList.add("no-anim");
+  addChannels(load());
+  refresh();
+  setTimeout(() => document.body.classList.remove("no-anim"), 50);
+})();
+</script>
+</body>
+</html>
