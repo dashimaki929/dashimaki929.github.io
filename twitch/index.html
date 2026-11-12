@@ -64,6 +64,12 @@
   .tile.main { z-index: 2; }
   /* 音が出ている配信は緑枠（Discord の発言中表示と同じ） */
   .tile.audible { box-shadow: 0 0 0 3px var(--green); }
+  /* ドラッグで入れ替え */
+  .tile.dragging { transition: none !important; z-index: 50; opacity: .85; box-shadow: 0 10px 30px rgba(0,0,0,.6); }
+  .tile.dragging .catcher { cursor: grabbing; }
+  .tile.drop-target { box-shadow: 0 0 0 3px var(--accent) !important; }
+  .tile.drop-target::after { content: ""; position: absolute; inset: 0; background: rgba(88,101,242,.25); z-index: 6; pointer-events: none; }
+  body.drag-active iframe { pointer-events: none; }
   .tile.audible .label { background: rgba(35,165,90,.85); }
   .tile .player, .tile .player iframe { position: absolute; inset: 0; width: 100% !important; height: 100% !important; border: 0; }
   .tile .catcher { position: absolute; inset: 0; cursor: pointer; z-index: 3; }
@@ -197,14 +203,15 @@
   const HOST = location.hostname;            // Twitch 埋め込みの parent / YouTube チャットの embed_domain に必須
   const ASPECT = 16 / 9;
   const STORE_KEY = "multi-twitch:channels"; // 以前の保存データをそのまま引き継ぐためキー名は据え置き
-  // YouTube の配信ごとの音量（次回も同じ音量で開く）。
-  // Twitch はログイン中のアカウントの音量設定を Twitch 側が反映するので、こちらでは保存・上書きしない
+  // 配信ごとの音量（一度変えた配信は次回も同じ音量で開く）
+  //   YouTube: 変えたことがなければ 50%
+  //   Twitch : 変えたことがなければ Twitch 側（ログイン中のアカウント）の音量をそのまま使う
   const VOL_KEY = "multi-twitch:volumes";
   const DEFAULT_VOLUME = 0.5;
   let volStore = {};
   try { volStore = JSON.parse(localStorage.getItem(VOL_KEY) || "{}") || {}; } catch (_) {}
   function rememberVolume(ch, v) {
-    if (!isYT(ch) || !(v > 0)) return;   // Twitch は対象外 / 0 はミュート扱いなので保存しない
+    if (!(v > 0)) return;   // 0 はミュート扱いなので保存しない
     volStore[ch] = Math.round(v * 100) / 100;
     try { localStorage.setItem(VOL_KEY, JSON.stringify(volStore)); } catch (_) {}
   }
@@ -343,11 +350,13 @@
     const catcher = el.querySelector(".catcher");
     let clickTimer = null;
     catcher.addEventListener("click", () => {
+      if (dragJustEnded) return;   // ドラッグ直後のクリックは無視
       if (focused !== ch) { setFocus(ch); return; }
       if (document.fullscreenElement) return;   // 全画面中のシングルクリックは無視
       clearTimeout(clickTimer);
       clickTimer = setTimeout(() => { clickTimer = null; setFocus(null); }, 250);
     });
+    enableDrag(ch, el, catcher);
     catcher.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       clearTimeout(clickTimer); clickTimer = null;
@@ -455,8 +464,10 @@
     const t = tiles.get(ch); if (!t || !t.api) return;
     t.ready = true; t.touched = Date.now();
     try {
-      if (isYT(ch)) t.api.setVolume(t.volume > 0 ? t.volume : DEFAULT_VOLUME);
-      else { const v = t.api.getVolume(); if (v > 0) t.volume = v; }   // Twitch はプレイヤーの音量をそのまま使う
+      const saved = volStore[ch];
+      if (saved > 0) { t.volume = saved; t.api.setVolume(saved); }          // 以前変えた音量を復元
+      else if (isYT(ch)) t.api.setVolume(t.volume = DEFAULT_VOLUME);       // YouTube の初期値
+      else { const v = t.api.getVolume(); if (v > 0) t.volume = v; }       // Twitch はプレイヤーの音量をそのまま使う
     } catch (_) {}
     applyMuted(ch);
   }
@@ -675,13 +686,89 @@
     return rects;
   }
 
+  let lastRects = new Map();   // 直近のレイアウト（ドラッグ先の判定に使う）
   function layout() {
     const rects = computeRects();
+    lastRects = rects;
     for (const [ch, r] of rects) {
       const el = tiles.get(ch).el, s = el.style;
       s.left = r.x + "px"; s.top = r.y + "px"; s.width = r.w + "px"; s.height = r.h + "px";
       el.classList.toggle("small", r.small);
     }
+  }
+
+  // ---------- drag & drop（配信の位置を入れ替え） ----------
+  // 大画面の配信以外（グリッド表示の各配信・大画面の下のサムネイル）をドラッグして、ドロップ先と位置を入れ替える
+  let dragJustEnded = false;
+
+  function enableDrag(ch, el, catcher) {
+    catcher.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0 || focused === ch || document.fullscreenElement) return;
+      const sx = e.clientX, sy = e.clientY;
+      const start = lastRects.get(ch); if (!start) return;
+      let dragging = false, target = null;
+      // 動きの速いドラッグでも取りこぼさないよう、押した時点でポインタを捕捉
+      try { catcher.setPointerCapture(e.pointerId); } catch (_) {}
+
+      const findTarget = (x, y) => {
+        const sr = stage.getBoundingClientRect(), px = x - sr.left, py = y - sr.top;
+        for (const [c, r] of lastRects) {
+          if (c === ch || c === focused) continue;
+          if (px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h) return c;
+        }
+        return null;
+      };
+      const setTarget = (c) => {
+        if (c === target) return;
+        if (target && tiles.has(target)) tiles.get(target).el.classList.remove("drop-target");
+        target = c;
+        if (target) tiles.get(target).el.classList.add("drop-target");
+      };
+
+      const move = (ev) => {
+        const dx = ev.clientX - sx, dy = ev.clientY - sy;
+        if (!dragging) {
+          if (Math.hypot(dx, dy) < 6) return;   // 少し動かすまではクリック扱い
+          dragging = true;
+          // つかんだ位置を基準に縮小して、ドロップ先が見えるようにする
+          el.style.transformOrigin = `${sx - el.getBoundingClientRect().left}px ${sy - el.getBoundingClientRect().top}px`;
+          el.classList.add("dragging");
+          document.body.classList.add("drag-active");
+          closeCtx();
+        }
+        el.style.transform = `translate(${dx}px, ${dy}px) scale(${Math.min(1, 240 / start.w)})`;
+        setTarget(findTarget(ev.clientX, ev.clientY));
+      };
+
+      const up = (ev) => {
+        catcher.removeEventListener("pointermove", move);
+        catcher.removeEventListener("pointerup", up);
+        catcher.removeEventListener("pointercancel", up);
+        if (!dragging) return;
+        // ドラッグしていた位置から新しい位置へアニメーションさせる
+        const dx = ev.clientX - sx, dy = ev.clientY - sy;
+        el.style.left = start.x + dx + "px"; el.style.top = start.y + dy + "px";
+        el.style.transform = ""; el.style.transformOrigin = "";
+        void el.offsetWidth;
+        el.classList.remove("dragging");
+        document.body.classList.remove("drag-active");
+        const to = target; setTarget(null);
+        if (to) swapChannels(ch, to);
+        else layout();
+        dragJustEnded = true; setTimeout(() => { dragJustEnded = false; }, 0);
+      };
+
+      catcher.addEventListener("pointermove", move);
+      catcher.addEventListener("pointerup", up);
+      catcher.addEventListener("pointercancel", up);
+    });
+  }
+
+  function swapChannels(a, b) {
+    const i = channels.indexOf(a), j = channels.indexOf(b);
+    if (i < 0 || j < 0) return;
+    [channels[i], channels[j]] = [channels[j], channels[i]];
+    refresh(); save();
   }
 
   // ---------- chips / chat ----------
