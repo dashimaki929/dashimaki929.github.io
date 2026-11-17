@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>カメラ翻訳</title>
+<style>
+  :root{
+    --bg:#0b0b0c; --panel:#18181b; --line:#2a2a2f; --text:#f4f4f5; --muted:#a1a1aa;
+    --accent:#facc15; --accent-ink:#111; --err:#f87171;
+    --safe-b:env(safe-area-inset-bottom,0px); --safe-t:env(safe-area-inset-top,0px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif}
+  button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
+  .hidden{display:none!important}
+
+  /* ---------- camera ---------- */
+  #camView{position:fixed;inset:0;display:flex;flex-direction:column}
+  #videoWrap{position:relative;flex:1;overflow:hidden;background:#000}
+  video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+  #camMsg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    padding:24px;text-align:center;color:var(--muted);line-height:1.7}
+  .topbar{position:absolute;top:0;left:0;right:0;padding:calc(10px + var(--safe-t)) 12px 10px;
+    display:flex;justify-content:space-between;align-items:center;
+    background:linear-gradient(#000a,#0000)}
+  .chip{background:#0009;border:1px solid #fff3;border-radius:999px;padding:7px 12px;font-size:13px;
+    backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+  .chip.on{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+  .controls{display:flex;align-items:center;justify-content:space-around;
+    padding:18px 20px calc(18px + var(--safe-b));background:#000}
+  .side{width:56px;height:56px;border-radius:50%;background:#ffffff14;display:flex;
+    align-items:center;justify-content:center;font-size:12px;line-height:1.2;text-align:center}
+  #shutter{width:76px;height:76px;border-radius:50%;background:#fff;border:5px solid #000;
+    box-shadow:0 0 0 3px #fff}
+  #shutter:active{transform:scale(.94)}
+
+  /* ---------- result ---------- */
+  #resView{position:fixed;inset:0;display:flex;flex-direction:column;background:var(--bg)}
+  #resScroll{flex:1;overflow:auto;-webkit-overflow-scrolling:touch}
+  #stage{position:relative;width:100%;line-height:0;background:#000}
+  #stage img{width:100%;display:block}
+  .box{position:absolute;display:flex;align-items:center;justify-content:center;overflow:hidden;
+    border-radius:3px;background:rgba(255,255,255,.93);color:#111;line-height:1.15;
+    text-align:center;padding:1px 2px;font-weight:600;word-break:break-word;
+    box-shadow:0 1px 4px #0006;transition:opacity .15s}
+  .box.ja{background:transparent;box-shadow:none;outline:1.5px dashed #ffffff80}
+  #stage.orig .box{opacity:0}
+  #status{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:14px;background:#000a;color:#fff;font-size:15px;line-height:1.6;
+    text-align:center;padding:24px}
+  .spin{width:38px;height:38px;border-radius:50%;border:4px solid #fff3;border-top-color:var(--accent);
+    animation:sp 0.9s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  #list{padding:14px 14px 24px}
+  .item{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px}
+  .item .src{color:var(--muted);font-size:13px;line-height:1.5;white-space:pre-wrap}
+  .item .src b{font-weight:500;color:#71717a;font-size:11px;margin-right:6px;
+    border:1px solid #3f3f46;border-radius:4px;padding:0 4px}
+  .item .dst{font-size:16px;line-height:1.6;margin-top:6px;white-space:pre-wrap}
+  .item.jaonly .dst{display:none}
+  .empty{color:var(--muted);text-align:center;padding:28px 0;line-height:1.7}
+  .err{color:var(--err)}
+  .resbar{display:flex;gap:10px;padding:12px 14px calc(12px + var(--safe-b));background:#000;border-top:1px solid var(--line)}
+  .btn{flex:1;padding:14px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-size:15px;text-align:center}
+  .btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+
+  /* ---------- settings ---------- */
+  #setView{position:fixed;inset:0;background:var(--bg);overflow:auto;
+    padding:calc(18px + var(--safe-t)) 18px calc(24px + var(--safe-b))}
+  #setView h1{font-size:20px;margin:4px 0 18px}
+  label{display:block;font-size:13px;color:var(--muted);margin:16px 0 6px}
+  input,select,textarea{width:100%;font:inherit;font-size:16px;color:var(--text);background:var(--panel);
+    border:1px solid var(--line);border-radius:10px;padding:12px}
+  .row{display:flex;gap:8px}.row>*{flex:1}
+  .note{font-size:13px;color:var(--muted);line-height:1.7;margin-top:8px}
+  .note a{color:var(--accent)}
+  .setbtns{display:flex;gap:10px;margin-top:24px}
+  #toast{position:fixed;left:50%;bottom:calc(110px + var(--safe-b));transform:translateX(-50%);
+    background:#000d;color:#fff;padding:9px 14px;border-radius:999px;font-size:13px;z-index:9;
+    pointer-events:none;opacity:0;transition:opacity .2s}
+  #toast.show{opacity:1}
+</style>
+</head>
+<body>
+
+<!-- ===== Camera ===== -->
+<section id="camView">
+  <div id="videoWrap">
+    <video id="video" playsinline muted autoplay></video>
+    <div id="camMsg">カメラを起動しています…</div>
+    <div class="topbar">
+      <button class="chip" id="torchBtn" hidden>ライト</button>
+      <span></span>
+      <button class="chip" id="openSet">設定</button>
+    </div>
+  </div>
+  <div class="controls">
+    <button class="side" id="pickBtn">写真<br>から</button>
+    <button id="shutter" aria-label="撮影して翻訳"></button>
+    <button class="side" id="flipBtn">切替</button>
+  </div>
+  <input type="file" id="fileIn" accept="image/*" hidden>
+</section>
+
+<!-- ===== Result ===== -->
+<section id="resView" class="hidden">
+  <div id="resScroll">
+    <div id="stage">
+      <img id="shot" alt="">
+      <div id="status"><div class="spin"></div><div id="statusText">読み取り中…</div></div>
+    </div>
+    <div id="list"></div>
+  </div>
+  <div class="resbar">
+    <button class="btn" id="toggleBtn">原文を表示</button>
+    <button class="btn" id="copyBtn">コピー</button>
+    <button class="btn primary" id="backBtn">もう一度</button>
+  </div>
+</section>
+
+<!-- ===== Settings ===== -->
+<section id="setView" class="hidden">
+  <h1>設定</h1>
+
+  <label for="keyIn">Gemini APIキー</label>
+  <input id="keyIn" type="password" autocomplete="off" placeholder="AIza…">
+  <div class="note">
+    <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a> で無料発行できます。
+    キーはこの端末のブラウザ内（localStorage）にだけ保存され、Google 以外には送信しません。
+  </div>
+
+  <label for="modelSel">モデル</label>
+  <div class="row">
+    <select id="modelSel"><option value="">（キー入力後に取得）</option></select>
+    <button class="btn" id="loadModels" style="flex:0 0 auto;padding:12px 14px">一覧取得</button>
+  </div>
+  <div class="note">無料枠では「Flash-Lite」系が回数上限に余裕があり速いのでおすすめです。上限に当たったら Flash 系に切り替えてください。</div>
+
+  <label for="targetSel">翻訳先</label>
+  <select id="targetSel">
+    <option value="日本語">日本語</option>
+    <option value="English">英語</option>
+  </select>
+  <div class="note">翻訳先の言語で書かれている部分は翻訳せずにそのまま残します。</div>
+
+  <label for="sizeSel">送信する画像サイズ</label>
+  <select id="sizeSel">
+    <option value="1024">小（速い・通信少）</option>
+    <option value="1600" selected>標準</option>
+    <option value="2200">大（細かい文字向け）</option>
+  </select>
+
+  <div class="setbtns">
+    <button class="btn" id="closeSet">閉じる</button>
+    <button class="btn primary" id="saveSet">保存</button>
+  </div>
+</section>
+
+<div id="toast"></div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const API = 'https://generativelanguage.googleapis.com/v1beta';
+  const store = {
+    get(k, d = '') { try { return localStorage.getItem('camtr.' + k) ?? d; } catch { return d; } },
+    set(k, v) { try { localStorage.setItem('camtr.' + k, v); } catch {} }
+  };
+
+  let stream = null, facing = 'environment', torchOn = false;
+  let lastItems = [], busy = false;
+
+  /* ---------------- toast ---------------- */
+  let toastT;
+  function toast(msg) {
+    const t = $('toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1800);
+  }
+
+  /* ---------------- camera ---------------- */
+  async function startCamera() {
+    stopCamera();
+    $('camMsg').classList.remove('hidden');
+    $('camMsg').textContent = 'カメラを起動しています…';
+    if (!navigator.mediaDevices?.getUserMedia) {
+      $('camMsg').innerHTML = 'このブラウザではカメラを使えません。<br>「写真から」で画像を選んでください。';
+      return;
+    }
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: facing }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+      });
+      const v = $('video'); v.srcObject = stream; await v.play().catch(() => {});
+      $('camMsg').classList.add('hidden');
+      const track = stream.getVideoTracks()[0];
+      const caps = track.getCapabilities?.() || {};
+      $('torchBtn').hidden = !caps.torch;
+      torchOn = false; $('torchBtn').classList.remove('on');
+      // continuous autofocus where supported
+      if (caps.focusMode?.includes('continuous')) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+    } catch (e) {
+      $('camMsg').innerHTML = 'カメラを起動できませんでした（' + (e.name || e) + '）。<br>ブラウザのカメラ許可を確認するか、「写真から」を使ってください。';
+    }
+  }
+  function stopCamera() {
+    stream?.getTracks().forEach(t => t.stop()); stream = null;
+  }
+  $('flipBtn').onclick = () => { facing = facing === 'environment' ? 'user' : 'environment'; startCamera(); };
+  $('torchBtn').onclick = async () => {
+    const track = stream?.getVideoTracks()[0]; if (!track) return;
+    torchOn = !torchOn;
+    try { await track.applyConstraints({ advanced: [{ torch: torchOn }] }); $('torchBtn').classList.toggle('on', torchOn); }
+    catch { torchOn = false; toast('ライトを点けられませんでした'); }
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopCamera();
+    else if (!$('camView').classList.contains('hidden')) startCamera();
+  });
+
+  /* ---------------- image helpers ---------------- */
+  function canvasFromSource(src, w, h) {
+    const max = +store.get('size', '1600');
+    const s = Math.min(1, max / Math.max(w, h));
+    const c = document.createElement('canvas');
+    c.width = Math.round(w * s); c.height = Math.round(h * s);
+    c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+    return c;
+  }
+  // Capture exactly what is visible on screen (video uses object-fit:cover)
+  function grabVisibleFrame() {
+    const v = $('video'), vw = v.videoWidth, vh = v.videoHeight;
+    const r = v.getBoundingClientRect();
+    const scale = Math.max(r.width / vw, r.height / vh);
+    const sw = r.width / scale, sh = r.height / scale;
+    const sx = (vw - sw) / 2, sy = (vh - sh) / 2;
+    const max = +store.get('size', '1600');
+    const s = Math.min(1, max / Math.max(sw, sh));
+    const c = document.createElement('canvas');
+    c.width = Math.round(sw * s); c.height = Math.round(sh * s);
+    c.getContext('2d').drawImage(v, sx, sy, sw, sh, 0, 0, c.width, c.height);
+    return c;
+  }
+
+  /* ---------------- flow ---------------- */
+  $('shutter').onclick = () => {
+    if (!getKey()) return openSettings('先に APIキーを設定してください');
+    const v = $('video');
+    if (!stream || !v.videoWidth) return toast('カメラが準備できていません');
+    process(grabVisibleFrame());
+  };
+  $('pickBtn').onclick = () => {
+    if (!getKey()) return openSettings('先に APIキーを設定してください');
+    $('fileIn').click();
+  };
+  $('fileIn').onchange = async e => {
+    const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+    try {
+      const bmp = await createImageBitmap(f, { imageOrientation: 'from-image' });
+      process(canvasFromSource(bmp, bmp.width, bmp.height));
+    } catch {
+      const img = new Image(); img.src = URL.createObjectURL(f); await img.decode();
+      process(canvasFromSource(img, img.naturalWidth, img.naturalHeight));
+    }
+  };
+  $('backBtn').onclick = () => {
+    if (busy) return;
+    showView('cam'); startCamera();
+  };
+  $('toggleBtn').onclick = () => {
+    const st = $('stage'); st.classList.toggle('orig');
+    $('toggleBtn').textContent = st.classList.contains('orig') ? '訳を表示' : '原文を表示';
+  };
+  $('copyBtn').onclick = async () => {
+    const txt = lastItems.filter(i => i.translation).map(i => i.translation).join('\n');
+    if (!txt) return toast('コピーする訳文がありません');
+    try { await navigator.clipboard.writeText(txt); toast('訳文をコピーしました'); }
+    catch { toast('コピーできませんでした'); }
+  };
+
+  function showView(name) {
+    $('camView').classList.toggle('hidden', name !== 'cam');
+    $('resView').classList.toggle('hidden', name !== 'res');
+    $('setView').classList.toggle('hidden', name !== 'set');
+  }
+
+  async function process(canvas) {
+    stopCamera();
+    busy = true;
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    $('shot').src = dataUrl;
+    $('stage').classList.remove('orig'); $('toggleBtn').textContent = '原文を表示';
+    $('stage').querySelectorAll('.box').forEach(b => b.remove());
+    $('list').innerHTML = '';
+    $('status').classList.remove('hidden');
+    $('status').querySelector('.spin').classList.remove('hidden');
+    $('statusText').textContent = '読み取り・翻訳中…';
+    showView('res');
+    $('resScroll').scrollTop = 0;
+    try {
+      const items = await callGemini(dataUrl.split(',')[1]);
+      lastItems = items;
+      render(items);
+      $('status').classList.add('hidden');
+    } catch (e) {
+      lastItems = [];
+      $('statusText').innerHTML = '<span class="err">' + esc(e.message || String(e)).replace(/\n/g, '<br>') + '</span>';
+      $('status').querySelector('.spin').classList.add('hidden');
+    } finally {
+      busy = false;
+    }
+  }
+
+  /* ---------------- Gemini ---------------- */
+  function getKey() { return store.get('key').trim(); }
+
+  async function callGemini(b64) {
+    const model = store.get('model') || 'gemini-2.5-flash-lite';
+    const target = store.get('target', '日本語');
+    const prompt =
+`この画像に写っている文字をすべて読み取ってください。
+- 意味のまとまり（見出し、1つの文や段落、ボタン名、看板の1行など）ごとに1ブロックにしてください。
+- 各ブロックについて、原文 text、言語コード lang（ISO 639-1。例: en, zh, ko, ja）、位置 box_2d を返してください。
+- box_2d は [ymin, xmin, ymax, xmax] を画像全体に対して 0〜1000 に正規化した整数です。
+- ${target}以外で書かれたブロックは、自然な${target}に翻訳して translation に入れてください。文脈（メニュー、標識、説明書など）を踏まえて訳してください。
+- ${target}で書かれたブロックは translation を空文字にしてください。
+- 文字が読み取れない場合は空の配列を返してください。`;
+
+    const body = {
+      contents: [{ parts: [
+        { inline_data: { mime_type: 'image/jpeg', data: b64 } },
+        { text: prompt }
+      ]}],
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: 'application/json',
+        responseSchema: {
+          type: 'ARRAY',
+          items: {
+            type: 'OBJECT',
+            properties: {
+              text: { type: 'STRING' },
+              lang: { type: 'STRING' },
+              translation: { type: 'STRING' },
+              box_2d: { type: 'ARRAY', items: { type: 'INTEGER' } }
+            },
+            required: ['text', 'lang', 'translation', 'box_2d']
+          }
+        }
+      }
+    };
+
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 60000);
+    let res;
+    try {
+      res = await fetch(`${API}/models/${encodeURIComponent(model)}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': getKey() },
+        body: JSON.stringify(body),
+        signal: ctrl.signal
+      });
+    } catch (e) {
+      throw new Error(e.name === 'AbortError' ? '時間切れになりました。もう一度試してください。' : '通信できませんでした。電波状況を確認してください。');
+    } finally { clearTimeout(timer); }
+
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const m = json.error?.message || res.statusText;
+      if (res.status === 429) throw new Error('無料枠の回数上限に達しました。少し待つか、設定で別のモデルに切り替えてください。\n' + m);
+      if (res.status === 400 && /API key/i.test(m)) throw new Error('APIキーが正しくないようです。設定を確認してください。');
+      if (res.status === 404) throw new Error(`モデル「${model}」が見つかりません。設定で一覧を取得し直してください。`);
+      throw new Error(`エラー (${res.status}): ${m}`);
+    }
+    const cand = json.candidates?.[0];
+    const text = cand?.content?.parts?.map(p => p.text || '').join('') || '';
+    if (!text) throw new Error('応答が空でした' + (cand?.finishReason ? `（${cand.finishReason}）` : '') + '。もう一度試してください。');
+    let arr;
+    try { arr = JSON.parse(text); } catch {
+      const m = text.match(/\[[\s\S]*\]/); arr = m ? JSON.parse(m[0]) : [];
+    }
+    return (Array.isArray(arr) ? arr : []).filter(i => i && i.text);
+  }
+
+  async function loadModels() {
+    const key = $('keyIn').value.trim();
+    if (!key) return toast('APIキーを入力してください');
+    $('loadModels').textContent = '取得中…';
+    try {
+      let all = [], token = '';
+      do {
+        const r = await fetch(`${API}/models?pageSize=200${token ? '&pageToken=' + token : ''}`, { headers: { 'x-goog-api-key': key } });
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error?.message || r.statusText);
+        all = all.concat(j.models || []); token = j.nextPageToken || '';
+      } while (token);
+      const ok = all
+        .filter(m => (m.supportedGenerationMethods || []).includes('generateContent'))
+        .map(m => m.name.replace(/^models\//, ''))
+        .filter(n => /^gemini-/.test(n) && !/(tts|image|live|audio|embedding|robotics|computer-use|veo|lyria|native)/i.test(n));
+      if (!ok.length) throw new Error('使えるモデルが見つかりませんでした');
+      const verOf = n => parseFloat((n.match(/gemini-(\d+(?:\.\d+)?)/) || [])[1] || 0);
+      const rank = n => (/flash-lite/.test(n) ? 0 : /flash/.test(n) ? 1 : 2) * 100
+                        + (/(preview|exp)/.test(n) ? 50 : 0) + (/-latest$/.test(n) ? 1 : 0) - verOf(n);
+      ok.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+      const cur = store.get('model');
+      $('modelSel').innerHTML = ok.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+      $('modelSel').value = ok.includes(cur) ? cur : ok[0];
+      toast(`${ok.length} 件のモデルを取得しました`);
+    } catch (e) {
+      toast('取得失敗: ' + e.message);
+    } finally { $('loadModels').textContent = '一覧取得'; }
+  }
+
+  /* ---------------- render ---------------- */
+  function esc(s) { return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+  function render(items) {
+    const stage = $('stage'), list = $('list');
+    if (!items.length) {
+      list.innerHTML = '<div class="empty">文字が見つかりませんでした。<br>文字に近づけて、ピントが合ってから撮ってみてください。</div>';
+      return;
+    }
+    const tr = items.filter(i => i.translation);
+    if (!tr.length) list.insertAdjacentHTML('beforeend', '<div class="empty">翻訳が必要な文字はありませんでした。</div>');
+
+    items.forEach((it, idx) => {
+      const b = Array.isArray(it.box_2d) && it.box_2d.length === 4 ? it.box_2d.map(Number) : null;
+      if (b) {
+        let [y1, x1, y2, x2] = b;
+        if (y1 > y2) [y1, y2] = [y2, y1];
+        if (x1 > x2) [x1, x2] = [x2, x1];
+        const el = document.createElement('div');
+        el.className = 'box' + (it.translation ? '' : ' ja');
+        el.style.left = x1 / 10 + '%'; el.style.top = y1 / 10 + '%';
+        el.style.width = Math.max(1, x2 - x1) / 10 + '%'; el.style.height = Math.max(1, y2 - y1) / 10 + '%';
+        if (it.translation) el.textContent = it.translation;
+        el.onclick = () => {
+          document.getElementById('it' + idx)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        };
+        stage.appendChild(el);
+      }
+      list.insertAdjacentHTML('beforeend',
+        `<div class="item${it.translation ? '' : ' jaonly'}" id="it${idx}">
+           <div class="src"><b>${esc((it.lang || '?').toUpperCase())}</b>${esc(it.text)}</div>
+           <div class="dst">${esc(it.translation || '')}</div>
+         </div>`);
+    });
+    // fit text inside boxes once the image has its final size
+    const fit = () => stage.querySelectorAll('.box:not(.ja)').forEach(fitText);
+    if ($('shot').complete) requestAnimationFrame(fit); else $('shot').onload = fit;
+  }
+
+  function fitText(el) {
+    const h = el.clientHeight, w = el.clientWidth;
+    let size = Math.max(8, Math.min(28, h * 0.8));
+    el.style.fontSize = size + 'px';
+    while (size > 7 && (el.scrollHeight > h + 1 || el.scrollWidth > w + 1)) {
+      size -= 1; el.style.fontSize = size + 'px';
+    }
+  }
+  window.addEventListener('resize', () => $('stage').querySelectorAll('.box:not(.ja)').forEach(fitText));
+
+  /* ---------------- settings ---------------- */
+  function openSettings(msg) {
+    stopCamera();
+    $('keyIn').value = getKey();
+    $('targetSel').value = store.get('target', '日本語');
+    $('sizeSel').value = store.get('size', '1600');
+    const cur = store.get('model');
+    if (cur && ![...$('modelSel').options].some(o => o.value === cur)) {
+      $('modelSel').insertAdjacentHTML('afterbegin', `<option value="${esc(cur)}">${esc(cur)}</option>`);
+    }
+    if (cur) $('modelSel').value = cur;
+    showView('set');
+    if (msg) toast(msg);
+    if (getKey() && $('modelSel').options.length <= 1) loadModels();
+  }
+  $('openSet').onclick = () => openSettings();
+  $('loadModels').onclick = loadModels;
+  $('closeSet').onclick = () => { showView('cam'); startCamera(); };
+  $('saveSet').onclick = () => {
+    store.set('key', $('keyIn').value.trim());
+    if ($('modelSel').value) store.set('model', $('modelSel').value);
+    store.set('target', $('targetSel').value);
+    store.set('size', $('sizeSel').value);
+    toast('保存しました');
+    showView('cam'); startCamera();
+  };
+
+  /* ---------------- boot ---------------- */
+  if (!getKey()) openSettings('はじめに Gemini APIキーを設定してください');
+  else startCamera();
+})();
+</script>
+</body>
+</html>
